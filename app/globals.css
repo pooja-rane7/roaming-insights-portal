@@ -44,6 +44,12 @@ h1 { font-size: 22px; margin: 0; }
 /* Controls */
 .btn { border: 1px solid var(--axis); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .btn:hover { background: var(--hover); }
+.theme-switch { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 6px 4px; cursor: pointer; color: var(--ink-2); font-size: 15px; }
+.theme-switch .track { width: 38px; height: 22px; border-radius: 11px; background: var(--axis); position: relative; transition: background 0.15s; }
+.theme-switch .thumb { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
+.theme-switch[aria-checked="true"] .track { background: var(--ca); }
+.theme-switch[aria-checked="true"] .thumb { transform: translateX(16px); }
+@media (prefers-reduced-motion: reduce) { .theme-switch .track, .theme-switch .thumb { transition: none; } }
 .btn.primary { background: var(--ca); border-color: var(--ca); color: #fff; font-weight: 600; }
 .filters { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
 .flabel { font-size: 12px; color: var(--muted); margin-right: -6px; }
