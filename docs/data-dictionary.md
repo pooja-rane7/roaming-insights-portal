@@ -2,6 +2,7 @@
 
 > **Everything here is fictional.** Meridian Mobile, every partner operator, every location
 > weight, incident and value was invented for a portfolio project. Nothing describes a real network.
+> Any resemblance to real company names is coincidental.
 
 - **Period:** 2025-10-15 to 2026-10-14 (365 days, daily)
 - **Home operator:** Meridian Mobile (U.S.)
