@@ -1,7 +1,7 @@
 // End-to-end tracking check: drives a real browser session through the portal and decodes every
 // request sent to the PostHog proxy (/lens-relay), so we can see exactly which events leave the browser.
 //
-//   node scripts/verify-tracking.mjs [base_url] [--error]   (default http://localhost:3000)
+//   node scripts/verify-tracking.mjs [base_url] [--error] [--account meridian|corvalia|lakeshore]
 //   --error also throws a labeled test error in the page to check exception autocapture.
 //
 // Note: this sends real events to the configured PostHog project, tagged environment=development.
@@ -13,8 +13,9 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 const args = process.argv.slice(2);
-const BASE = args.find((a) => !a.startsWith("--")) ?? "http://localhost:3000";
+const BASE = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--account") ?? "http://localhost:3000";
 const WITH_ERROR = args.includes("--error");
+const ACCOUNT = args.includes("--account") ? args[args.indexOf("--account") + 1] : "meridian";
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9334;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -104,7 +105,8 @@ try {
   console.log("✓ open sign-in page");
 
   load = nextLoad();
-  await click("sign in as Meridian analyst", `document.querySelector('form[action="/api/session"] button[type=submit]')`);
+  await click(`choose account: ${ACCOUNT}`, `document.querySelector('input[name=account][value="${ACCOUNT}"]')`);
+  await click(`sign in as ${ACCOUNT} analyst`, `document.querySelector('form[action="/api/session"] button[type=submit]')`);
   await load; await sleep(3000);
 
   await click("filter: country = Canada", byText(".filters .seg button", "Canada"));
@@ -132,7 +134,7 @@ try {
   await Promise.all(bodies);
   console.log(`\nProxy responses: ${[...new Set(statuses)].join(", ") || "none"}`);
   console.log(`Events sent: ${events.length}\n`);
-  const show = ["$exception_message", "page_name", "filter_name", "filter_value", "chart_id", "view", "theme", "is_enabled", "partner_id", "report_type", "role", "account_id", "environment", "traffic_source_type", "app_version"];
+  const show = ["$exception_message", "login_method", "page_name", "filter_name", "filter_value", "chart_id", "view", "theme", "is_enabled", "partner_id", "report_type", "role", "account_id", "environment", "traffic_source_type", "app_version"];
   for (const ev of events) {
     const p = ev.properties ?? {};
     const extras = show.filter((k) => p[k] !== undefined).map((k) => `${k}=${p[k]}`).join(" ");
