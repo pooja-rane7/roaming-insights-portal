@@ -8,7 +8,7 @@ I built a small B2B SaaS product, **RoamLens**, a roaming-insights portal sold t
 
 ## Ground rules
 
-- **Everything is fictional.** RoamLens, every operator (Meridian Mobile, Bluepeak Wireless, Lakeshore Cellular, all partner networks) and every number. No employer, customer or proprietary data, methodology or naming.
+- **Everything is fictional.** RoamLens, every operator (Meridian Mobile, Corvalia Wireless, Lakeshore Cellular, all partner networks) and every number. No employer, customer or proprietary data, methodology or naming.
 - Simulated usage is always tagged `traffic_source_type = simulated` and never presented as real.
 - No fabricated screenshots, dashboards or results. Everything shown can be reproduced from this repo.
 - Credentials live in `.env.local` only and are never committed.
@@ -26,7 +26,7 @@ I built a small B2B SaaS product, **RoamLens**, a roaming-insights portal sold t
 | Account | Plan | Seats | Story |
 |---|---|---|---|
 | Meridian Mobile | Enterprise | 25 | Healthy, early adopter of the experience-metrics beta |
-| Bluepeak Wireless | Growth | 12 | Case study: "our usage dropped 60%" |
+| Corvalia Wireless | Growth | 12 | Case study: "our usage dropped 60%" |
 | Lakeshore Cellular | Starter | 5 | Low adoption, an expansion opportunity |
 
 ## Architecture

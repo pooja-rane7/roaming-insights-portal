@@ -92,7 +92,7 @@ No A/B experiment: with a few dozen B2B users, an experiment wouldn't reach sign
 
 ## 8. Case-study candidates (choose one in Phase 7)
 
-1. **Missing group call**: a "login refactor" drops `posthog.group()`. Bluepeak's account usage "drops 60%" while total usage is flat.
+1. **Missing group call**: a "login refactor" drops `posthog.group()`. Corvalia's account usage "drops 60%" while total usage is flat.
 2. **Identity merge**: sign-out skips `reset()`, so several demo users merge into one person.
 3. **Double pageviews**: a routing change fires `$pageview` twice, inflating usage and deflating conversion.
 4. **Ad-blocker loss**: the reverse proxy is removed; client events drop while server events don't.
