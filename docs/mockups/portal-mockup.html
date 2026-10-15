@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Meridian Mobile · Roaming Insights (mockup)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // Pick the theme before first paint: saved choice, else OS preference.
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  })();
+</script>
+<style>
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --hover: #f3f2ee; --seg-on: #eaf1fb;
+    --ca: #2a78d6; --mx: #eb6834; --up: #006300; --down: #b42318;
+    --nav: #1d1f24; --banner: #fff6dc; --banner-border: #efd68f; --code: #fff1ea; --tip: #1d1f24; --tip-ink: #fff;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --hover: #242423; --seg-on: #1f2d42;
+    --ca: #3987e5; --mx: #d95926; --up: #0ca30c; --down: #e66767;
+    --nav: #111111; --banner: #2b2414; --banner-border: #5c4a1c; --code: #3a2216; --tip: #f0efec; --tip-ink: #0b0b0b;
+  }
+  :root { --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; --ph: #f54e00; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--ink); font-size: 14px; }
+  .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+  nav { background: var(--nav); color: #d8d8d4; padding: 18px 14px; border-right: 1px solid var(--border); }
+  nav .logo { color: #fff; font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  nav .org { font-size: 12px; color: #9a9a94; margin-bottom: 24px; }
+  nav a { display: block; padding: 8px 10px; border-radius: 6px; color: inherit; text-decoration: none; margin-bottom: 2px; }
+  nav a.on { background: rgba(255,255,255,0.10); color: #fff; }
+  nav .soon { font-size: 10px; color: #8a8a84; margin-left: 4px; }
+  main { padding: 20px 28px 40px; min-width: 0; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: var(--ink-2); margin-top: 2px; }
+  .banner { background: var(--banner); border: 1px solid var(--banner-border); border-radius: 8px; padding: 6px 12px; font-size: 12px; margin-bottom: 14px; }
+  .filters { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: none; padding: 7px 12px; font: inherit; cursor: pointer; color: var(--ink-2); border-right: 1px solid var(--axis); }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { background: var(--seg-on); color: var(--ink); font-weight: 600; }
+  .flabel { font-size: 12px; color: var(--muted); margin-right: -6px; }
+  .btn { border: 1px solid var(--axis); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  .btn.ph { border-color: var(--ph); color: var(--ph); font-weight: 600; }
+  .btn.ph.on { background: var(--ph); color: #fff; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; position: relative; min-width: 0; }
+  .kpi .k { font-size: 12px; color: var(--ink-2); }
+  .kpi .v { font-size: 26px; font-weight: 650; margin: 4px 0 2px; }
+  .kpi .d { font-size: 12px; color: var(--ink-2); }
+  .kpi .d .up { color: var(--up); font-weight: 600; }
+  .kpi .d .down { color: var(--down); font-weight: 600; }
+  .grid2 { display: grid; grid-template-columns: 1.55fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid2.even { grid-template-columns: 1fr 1fr; }
+  .card h3 { margin: 0 0 2px; font-size: 15px; }
+  .card .cap { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  #map { height: 520px; border-radius: 8px; background: var(--page); }
+  .maplegend { display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--ink-2); margin-top: 8px; flex-wrap: wrap; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 5px; }
+  .sw.sq { border-radius: 2px; transform: rotate(45deg); }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .tip { position: fixed; pointer-events: none; background: var(--tip); color: var(--tip-ink); font-size: 12px; padding: 7px 9px; border-radius: 6px; display: none; z-index: 2000; line-height: 1.45; }
+  .tip .tsw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  .leaflet-tooltip { background: var(--tip); color: var(--tip-ink); border: 0; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  .leaflet-tooltip-top:before { border-top-color: var(--tip); }
+  .leaflet-container a { color: var(--ink-2); }
+  .leaflet-bar a { background: var(--surface); color: var(--ink); border-color: var(--border); }
+  .leaflet-control-attribution { background: rgba(127,127,127,.15) !important; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 7px 6px; border-bottom: 1px solid var(--grid); }
+  td { padding: 8px 6px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  tr.row:hover { background: var(--hover); cursor: pointer; }
+  .pref { font-size: 10px; border: 1px solid var(--axis); border-radius: 4px; padding: 1px 5px; color: var(--ink-2); margin-left: 6px; }
+  .status { white-space: nowrap; font-size: 12px; color: var(--ink); }
+  .status i { font-style: normal; display: inline-block; width: 16px; height: 16px; border-radius: 50%; color: #fff; text-align: center; line-height: 16px; font-size: 10px; margin-right: 5px; font-weight: 700; }
+  .linkish { color: var(--ink-2); font-size: 12px; text-decoration: underline; cursor: pointer; float: right; }
+  .tableview { display: none; max-height: 220px; overflow: auto; }
+  /* PostHog overlay */
+  .phb { display: none; position: absolute; top: -9px; right: 10px; background: var(--ph); color: #fff; font: 600 10.5px ui-monospace, Menlo, monospace; padding: 3px 7px; border-radius: 5px; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,.15); white-space: nowrap; }
+  body.ph-on .phb { display: block; }
+  body.ph-on .card, body.ph-on .seg, body.ph-on .btn.export { outline: 2px dashed rgba(245,78,0,.45); outline-offset: 2px; }
+  .phpanel { display: none; margin-top: 14px; border-color: var(--ph); }
+  body.ph-on .phpanel { display: block; }
+  .phpanel code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .wrapf { position: relative; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav>
+    <div class="logo">◆ Meridian Mobile</div>
+    <div class="org">Roaming Insights · Wholesale team</div>
+    <a class="on" href="#">Overview</a>
+    <a href="#">Outbound roaming</a>
+    <a href="#">Inbound roaming</a>
+    <a href="#">Partner scorecards</a>
+    <a href="#">Experience</a>
+    <a href="#">Border zones</a>
+    <a href="#">Reports &amp; exports</a>
+    <a href="#">Alerts <span class="soon">beta</span></a>
+    <a href="#">Settings</a>
+  </nav>
+
+  <main>
+    <div class="top">
+      <div>
+        <h1>Roaming overview</h1>
+        <div class="sub">U.S. home network · neighbouring markets: Canada &amp; Mexico</div>
+      </div>
+      <div style="display:flex; gap:8px">
+        <span class="wrapf"><button class="btn" id="themeToggle"></button><span class="phb" style="top:-12px">theme_changed</span></span>
+        <span class="wrapf"><button class="btn export">⤓ Export CSV</button><span class="phb" style="top:-12px">report_exported</span></span>
+        <button class="btn ph" id="phToggle">◉ Show PostHog tracking</button>
+      </div>
+    </div>
+
+    <div class="banner">Design mockup. Meridian Mobile, all partner operators and every number on this page are <b>fictional</b>.</div>
+
+    <!-- One filter row scopes everything below -->
+    <div class="filters">
+      <span class="flabel">Direction</span>
+      <span class="wrapf"><span class="seg" id="fDir">
+        <button data-v="out" class="on">Outbound · our subscribers abroad</button>
+        <button data-v="in">Inbound · visitors on our network</button>
+      </span><span class="phb">filter_applied {filter: direction}</span></span>
+      <span class="flabel">Country</span>
+      <span class="wrapf"><span class="seg" id="fCty">
+        <button data-v="all" class="on">All</button>
+        <button data-v="CA">🇨🇦 Canada</button>
+        <button data-v="MX">🇲🇽 Mexico</button>
+      </span><span class="phb">filter_applied {filter: country}</span></span>
+      <span class="flabel">Period</span>
+      <span class="seg"><button class="on">Sep 15 – Oct 14, 2026</button></span>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <span class="phb">map_viewed · map_marker_clicked</span>
+        <h3 id="mapTitle"></h3>
+        <div class="cap" id="mapCap"></div>
+        <div id="map"></div>
+        <div class="maplegend">
+          <span><span class="sw" style="background:var(--ca)"></span>Canada</span>
+          <span><span class="sw" style="background:var(--mx)"></span>Mexico</span>
+          <label style="margin-left:auto; cursor:pointer"><input type="checkbox" id="borderToggle" checked> <span class="sw sq" style="background:var(--ink-2)"></span>Border-zone hotspots</label>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:14px; min-width:0">
+        <div class="card">
+          <span class="phb">chart_hovered (sampled)</span>
+          <h3 id="trendTitle"></h3>
+          <div class="cap">Unique devices per day <span class="linkish" data-table="trend">View as table</span></div>
+          <div class="legend" id="trendLegend"></div>
+          <div id="trend"></div>
+          <div class="tableview" id="trendTable"></div>
+        </div>
+        <div class="card">
+          <span class="phb">partner_compared</span>
+          <h3>Speed vs. latency by partner</h3>
+          <div class="cap" id="scatterCap"></div>
+          <div id="scatter"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2 even">
+      <div class="card">
+        <span class="phb">chart_hovered (sampled)</span>
+        <h3>Daily median download speed</h3>
+        <div class="cap">Median of device speed samples, Mbps <span class="linkish" data-table="speed">View as table</span></div>
+        <div class="legend" id="speedLegend"></div>
+        <div id="speed"></div>
+        <div class="tableview" id="speedTable"></div>
+      </div>
+      <div class="card">
+        <span class="phb">partner_compared</span>
+        <h3>Data per roamer by partner</h3>
+        <div class="cap">Average MB per roamer per day</div>
+        <div id="bars"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="phb">partner_scorecard_opened {partner_id}</span>
+      <h3 id="tblTitle"></h3>
+      <div class="cap" id="tblCap"></div>
+      <table id="partners"></table>
+    </div>
+
+    <div class="card phpanel">
+      <h3>How PostHog instruments this portal</h3>
+      <div class="cap">The portal is the product; PostHog measures how roaming teams use it. Orange tags above show the event each component sends.</div>
+      <ul style="margin:6px 0 0; padding-left:18px; line-height:1.7">
+        <li><b>Group analytics:</b> every operator customer is a PostHog group, e.g. <code>posthog.group('company', 'meridian-mobile')</code>, so usage, retention and health roll up per account.</li>
+        <li><b>Person properties:</b> <code>role</code> (analyst / manager / finance), <code>team</code>, <code>preferred_theme</code>.</li>
+        <li><b>Feature flag:</b> <code>experience-metrics-beta</code> rolled out to one operator first; the Alerts page sits behind <code>alerts-beta</code>.</li>
+        <li><b>Funnel:</b> <code>$pageview</code> → <code>filter_applied</code> → <code>partner_scorecard_opened</code> → <code>report_exported</code>.</li>
+        <li><b>Session replay:</b> where do analysts get stuck on the map?</li>
+        <li><b>Case study:</b> "Carrier B's weekly active users dropped 60%." Real churn risk or broken tracking?</li>
+      </ul>
+    </div>
+  </main>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+// ---------- Theme helpers ----------
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const COLOR = () => ({ CA: css('--ca'), MX: css('--mx') });
+const NAME = { CA: 'Canada', MX: 'Mexico' };
+
+// ---------- Fictional data (deterministic) ----------
+function rng(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(42);
+const days = [...Array(30)].map((_, i) => new Date(Date.UTC(2026, 8, 15 + i)));
+const fmtDay = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const wk = d => [0, 5, 6].includes(d.getUTCDay());
+function series(base, fn, noise = 0.05, dp = 0){
+  const k = 10 ** dp;
+  return days.map((d, i) => Math.round((base + fn(d, i) + (R() - 0.5) * base * noise) * k) / k);
+}
+const daily = {
+  out: {
+    CA: series(38000, (d, i) => (wk(d) ? 4200 : 0) + (i >= 24 && i <= 27 ? 7500 : 0)),          // CA Thanksgiving weekend
+    MX: series(26000, (d, i) => (wk(d) ? 3100 : 0) + (i <= 2 ? 9000 - i * 2500 : 0)),          // Sep 16 holiday travel
+  },
+  in: {
+    CA: series(46000, (d, i) => (wk(d) ? 2500 : 0) + i * 160),                                  // snowbird season ramps
+    MX: series(51000, (d, i) => (wk(d) ? 3800 : 0) + (i >= 1 && i <= 2 ? -6000 : 0)),          // visitors home for Sep 16
+  },
+};
+// Median download speed (Mbps). Crowds = congestion: speeds dip when roamer volume spikes.
+const speed = {
+  out: {
+    CA: series(40, (d, i) => (wk(d) ? -2.5 : 0) + (i >= 24 && i <= 27 ? -8 : 0), 0.08, 1),
+    MX: series(30, (d, i) => (wk(d) ? -2 : 0) + (i <= 2 ? -7 + i * 2.5 : 0) + (i >= 18 && i <= 19 ? -9 : 0), 0.08, 1), // Costa Red incident Oct 3–4
+  },
+  in: {
+    CA: series(52, (d, i) => (wk(d) ? -3 : 0), 0.06, 1),
+    MX: series(48, (d, i) => (wk(d) ? -3.5 : 0), 0.06, 1),
+  },
+};
+const annotations = {
+  roamers: [{ i: 1, label: 'MX Independence Day' }, { i: 27, label: 'CA Thanksgiving' }],
+  speed: [{ i: 18, label: 'Partner incident (MX)', dir: 'out' }, { i: 27, label: 'CA Thanksgiving' }],
+};
+
+// dl/ul = median download/upload Mbps, lat = median latency ms
+const partners = {
+  out: [
+    { id: 'boreal', name: 'Boreal Wireless',  c: 'CA', pref: true,  n: 24800, reg: 99.1, mb: 412, dl: 48.2, ul: 9.1, lat: 38 },
+    { id: 'maple',  name: 'Maplelink Mobile', c: 'CA', pref: false, n: 11900, reg: 97.4, mb: 388, dl: 31.5, ul: 6.4, lat: 52 },
+    { id: 'tundra', name: 'Tundra Tel',       c: 'CA', pref: false, n: 1900,  reg: 91.2, mb: 205, dl: 8.7,  ul: 2.1, lat: 96 },
+    { id: 'sierra', name: 'Sierra Celular',   c: 'MX', pref: true,  n: 19400, reg: 98.6, mb: 466, dl: 36.9, ul: 7.8, lat: 49 },
+    { id: 'nopal',  name: 'Nopal Móvil',      c: 'MX', pref: false, n: 6300,  reg: 96.4, mb: 351, dl: 18.4, ul: 4.2, lat: 71 },
+    { id: 'costa',  name: 'Costa Red',        c: 'MX', pref: false, n: 1600,  reg: 88.7, mb: 198, dl: 4.6,  ul: 1.3, lat: 142 },
+  ],
+  // Inbound: visitors from each home operator on OUR network. Latency is higher for
+  // home-routed traffic (data travels back to the visitor's home country first).
+  in: [
+    { id: 'boreal', name: 'Boreal Wireless',  c: 'CA', n: 26100, reg: 98.9, mb: 371, dl: 54.1, ul: 10.2, lat: 61 },
+    { id: 'maple',  name: 'Maplelink Mobile', c: 'CA', n: 13400, reg: 98.2, mb: 344, dl: 51.7, ul: 9.8,  lat: 64 },
+    { id: 'tundra', name: 'Tundra Tel',       c: 'CA', n: 2300,  reg: 95.1, mb: 260, dl: 44.0, ul: 8.3,  lat: 72 },
+    { id: 'sierra', name: 'Sierra Celular',   c: 'MX', n: 33200, reg: 98.4, mb: 402, dl: 49.3, ul: 9.4,  lat: 88 },
+    { id: 'nopal',  name: 'Nopal Móvil',      c: 'MX', n: 13800, reg: 97.1, mb: 318, dl: 47.6, ul: 9.0,  lat: 93 },
+    { id: 'costa',  name: 'Costa Red',        c: 'MX', n: 3700,  reg: 92.4, mb: 240, dl: 39.8, ul: 7.2,  lat: 118 },
+  ],
+};
+
+const places = {
+  out: [
+    ['Toronto', 43.65, -79.38, 'CA', 9800], ['Vancouver', 49.28, -123.12, 'CA', 7200], ['Montréal', 45.50, -73.57, 'CA', 5400],
+    ['Calgary', 51.05, -114.07, 'CA', 2600], ['Banff', 51.18, -115.57, 'CA', 1900], ['Niagara Falls', 43.09, -79.08, 'CA', 3100],
+    ['Ottawa', 45.42, -75.70, 'CA', 2300], ['Windsor', 42.31, -83.03, 'CA', 2900],
+    ['Cancún', 21.16, -86.85, 'MX', 8900], ['Mexico City', 19.43, -99.13, 'MX', 4100], ['Tijuana', 32.51, -117.04, 'MX', 3600],
+    ['Los Cabos', 22.89, -109.92, 'MX', 2700], ['Puerto Vallarta', 20.65, -105.23, 'MX', 2200], ['Guadalajara', 20.67, -103.35, 'MX', 1500],
+    ['Monterrey', 25.69, -100.32, 'MX', 1400], ['Ciudad Juárez', 31.69, -106.42, 'MX', 1800],
+  ],
+  in: [
+    ['Seattle', 47.61, -122.33, 'CA', 5200], ['Seattle', 47.61, -122.33, 'MX', 600], ['Buffalo', 42.89, -78.88, 'CA', 4800], ['Buffalo', 42.89, -78.88, 'MX', 200],
+    ['New York', 40.71, -74.01, 'CA', 6100], ['New York', 40.71, -74.01, 'MX', 3900], ['Orlando', 28.54, -81.38, 'CA', 4300], ['Orlando', 28.54, -81.38, 'MX', 2600],
+    ['Phoenix', 33.45, -112.07, 'CA', 5600], ['Phoenix', 33.45, -112.07, 'MX', 3100], ['Las Vegas', 36.17, -115.14, 'CA', 3900], ['Las Vegas', 36.17, -115.14, 'MX', 2800],
+    ['Los Angeles', 34.05, -118.24, 'CA', 2400], ['Los Angeles', 34.05, -118.24, 'MX', 7900], ['San Diego', 32.72, -117.16, 'CA', 1100], ['San Diego', 32.72, -117.16, 'MX', 6200],
+    ['San Antonio', 29.42, -98.49, 'CA', 300], ['San Antonio', 29.42, -98.49, 'MX', 5400], ['Houston', 29.76, -95.37, 'CA', 600], ['Houston', 29.76, -95.37, 'MX', 6100],
+    ['Chicago', 41.88, -87.63, 'CA', 1900], ['Chicago', 41.88, -87.63, 'MX', 3300], ['Miami', 25.76, -80.19, 'CA', 2100], ['Miami', 25.76, -80.19, 'MX', 2400],
+    ['Detroit', 42.33, -83.05, 'CA', 3600], ['Detroit', 42.33, -83.05, 'MX', 300],
+  ],
+};
+// Devices within ~10 km of the border registering on a cross-border network ("border bleed")
+const border = [
+  ['San Diego – Tijuana', 32.54, -117.03, 'MX', 18400], ['El Paso – Ciudad Juárez', 31.76, -106.45, 'MX', 9700],
+  ['Laredo – Nuevo Laredo', 27.50, -99.50, 'MX', 6200], ['Brownsville – Matamoros', 25.90, -97.50, 'MX', 4100],
+  ['Nogales', 31.34, -110.94, 'MX', 2800], ['Detroit – Windsor', 42.32, -83.04, 'CA', 7600],
+  ['Buffalo – Niagara', 42.95, -78.90, 'CA', 5300], ['Blaine – Surrey', 49.00, -122.75, 'CA', 3900],
+  ['Sault Ste. Marie', 46.50, -84.35, 'CA', 900],
+];
+
+// ---------- State ----------
+const state = { dir: 'out', cty: 'all' };
+const inCty = c => state.cty === 'all' || state.cty === c;
+const countries = () => state.cty === 'all' ? ['CA', 'MX'] : [state.cty];
+const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
+const tip = document.getElementById('tip');
+function showTip(html, e){ tip.innerHTML = html; tip.style.display = 'block'; tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; }
+function hideTip(){ tip.style.display = 'none'; }
+const wavg = (P, k) => P.reduce((s, p) => s + p[k] * p.n, 0) / P.reduce((s, p) => s + p.n, 0);
+
+// ---------- KPIs ----------
+function renderKpis(){
+  const P = partners[state.dir].filter(p => inCty(p.c));
+  const n = P.reduce((s, p) => s + p.n, 0);
+  const tb = P.reduce((s, p) => s + p.n * p.mb * 5.5, 0) / 1e6;  // assume ~5.5 roaming days per device
+  const out = state.dir === 'out';
+  const third = out
+    ? ['Steering to preferred partner', (P.filter(p => p.pref).reduce((s, p) => s + p.n, 0) / n * 100).toFixed(0) + '%', 'Target ≥ 80%']
+    : ['Median latency', Math.round(wavg(P, 'lat')) + ' ms', 'Higher when traffic is home-routed'];
+  const tiles = [
+    [out ? 'Unique outbound roamers' : 'Unique inbound visitors', fmt(n), `<span class="up">▲ ${out ? '6.2' : '3.4'}%</span> vs prior 30 days`],
+    [out ? 'Roaming data used' : 'Visitor data on our network', tb.toFixed(1) + ' TB', `<span class="up">▲ ${out ? '9.8' : '5.1'}%</span> vs prior 30 days`],
+    third,
+    ['Registration success', wavg(P, 'reg').toFixed(1) + '%', 'Weighted across partners'],
+    ['Median download speed', wavg(P, 'dl').toFixed(1) + ' Mbps', `<span class="${out ? 'down' : 'up'}">${out ? '▼ 2.3' : '▲ 1.1'}%</span> vs prior 30 days`],
+  ];
+  document.getElementById('kpis').innerHTML = tiles.map(t =>
+    `<div class="card kpi"><div class="k">${t[0]}</div><div class="v">${t[1]}</div><div class="d">${t[2]}</div></div>`).join('');
+}
+
+// ---------- Map ----------
+const map = L.map('map', { scrollWheelZoom: false, zoomSnap: 0.25 }).setView([37, -100], 3.25);
+const tiles = {
+  light: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri', maxZoom: 10 }),
+  dark:  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',  { attribution: 'Tiles &copy; Esri', maxZoom: 10 }),
+};
+const bubbleLayer = L.layerGroup().addTo(map);
+const borderLayer = L.layerGroup().addTo(map);
+const radius = v => 3 + Math.sqrt(v) / 6;
+let lastBoundsKey = '';
+
+function renderMap(){
+  const theme = document.documentElement.dataset.theme;
+  Object.entries(tiles).forEach(([k, l]) => k === theme ? l.addTo(map) : map.removeLayer(l));
+  bubbleLayer.clearLayers(); borderLayer.clearLayers();
+  const C = COLOR(), surface = css('--surface'), ink2 = css('--ink-2');
+  const pts = places[state.dir].filter(p => inCty(p[3])).sort((a, b) => b[4] - a[4]);  // big first so small sit on top
+  const P = partners[state.dir];
+  pts.forEach(([city, lat, lng, c, v]) => {
+    L.circleMarker([lat, lng], { radius: radius(v), color: surface, weight: 2, fillColor: C[c], fillOpacity: 0.8 })
+      .bindTooltip(state.dir === 'out'
+        ? `<b>${city}</b>, ${NAME[c]}<br>${v.toLocaleString()} Meridian roamers`
+        : `<b>${city}</b>, USA<br>${v.toLocaleString()} visitors from ${NAME[c]}<br>Median ${wavg(P.filter(p => p.c === c), 'dl').toFixed(0)} Mbps on our network`, { direction: 'top' })
+      .addTo(bubbleLayer);
+  });
+  if (document.getElementById('borderToggle').checked) {
+    border.filter(b => inCty(b[3])).forEach(([name, lat, lng, c, v]) => {
+      const s = Math.round(8 + Math.sqrt(v) / 8);
+      L.marker([lat, lng], { icon: L.divIcon({ className: '', iconSize: [s, s],
+        html: `<div style="width:${s}px;height:${s}px;transform:rotate(45deg);background:${ink2};border:2px solid ${surface};opacity:.9"></div>` }) })
+        .bindTooltip(`<b>${name}</b> border zone<br>${v.toLocaleString()} cross-border registrations (30d)<br>Devices near the border attaching to the other country's network`, { direction: 'top' })
+        .addTo(borderLayer);
+    });
+  }
+  const key = state.dir + state.cty;
+  if (key !== lastBoundsKey) {
+    map.fitBounds([...places[state.dir], ...border].filter(p => inCty(p[3])).map(p => [p[1], p[2]]), { padding: [30, 30] });
+    lastBoundsKey = key;
+  }
+  document.getElementById('mapTitle').textContent = state.dir === 'out' ? 'Where our subscribers roam' : 'Where visitors use our network';
+  document.getElementById('mapCap').textContent = state.dir === 'out'
+    ? 'Unique Meridian roamers by location, last 30 days. Bubble area ∝ roamers. Hover for details.'
+    : 'Unique visiting devices by U.S. metro and home country, last 30 days. Bubble area ∝ visitors.';
+}
+document.getElementById('borderToggle').addEventListener('change', renderMap);
+
+// ---------- Line chart (single axis) ----------
+function lineChart({ el, legendEl, tableEl, data, notes, unit, dp = 0, fixedMax, W = 470 }){
+  const H = W * 0.4, m = { l: 40, r: 84, t: 16, b: 24 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const C = COLOR(), cs = countries();
+  const grid = css('--grid'), axis = css('--axis'), muted = css('--muted'), ink2 = css('--ink-2'), surface = css('--surface');
+  const max = fixedMax || Math.ceil(Math.max(...cs.flatMap(c => data[c])) / 10000) * 10000;
+  const x = i => m.l + i / (days.length - 1) * iw;
+  const y = v => m.t + ih - v / max * ih;
+  const show = v => dp ? v.toFixed(dp) : fmt(v);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
+  for (let v = 0; v <= max; v += max / 4) {
+    s += `<line x1="${m.l}" x2="${m.l + iw}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 0 ? axis : grid}" stroke-width="1"/>`;
+    s += `<text x="${m.l - 6}" y="${y(v) + 4}" font-size="10" fill="${muted}" text-anchor="end">${show(v)}</text>`;
+  }
+  [0, 7, 14, 21, 29].forEach(i => s += `<text x="${x(i)}" y="${H - 6}" font-size="10" fill="${muted}" text-anchor="middle">${fmtDay(days[i])}</text>`);
+  notes.filter(a => !a.dir || a.dir === state.dir).forEach(a => {
+    s += `<line x1="${x(a.i)}" x2="${x(a.i)}" y1="${m.t}" y2="${m.t + ih}" stroke="${axis}" stroke-width="1"/>`;
+    s += `<text x="${x(a.i) + 3}" y="${m.t - 4}" font-size="9.5" fill="${muted}">${a.label}</text>`;
+  });
+  cs.forEach(c => {
+    const d = data[c];
+    s += `<path d="${d.map((v, i) => (i ? 'L' : 'M') + x(i) + ' ' + y(v)).join('')}" fill="none" stroke="${C[c]}" stroke-width="2" stroke-linejoin="round"/>`;
+    s += `<text x="${x(29) + 6}" y="${y(d[29]) + 4}" font-size="11" fill="${ink2}">${NAME[c]} ${show(d[29])}</text>`;
+  });
+  s += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="${ink2}" stroke-width="1" visibility="hidden"/>`;
+  cs.forEach(c => s += `<circle class="dot" data-c="${c}" r="4" fill="${C[c]}" stroke="${surface}" stroke-width="2" visibility="hidden"/>`);
+  s += `<rect class="hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"/></svg>`;
+  el.innerHTML = s;
+  const svg = el.querySelector('svg'), xh = svg.querySelector('.xh'), hit = svg.querySelector('.hit');
+  hit.addEventListener('mousemove', e => {
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const i = Math.max(0, Math.min(29, Math.round((p.x - m.l) / iw * 29)));
+    xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.setAttribute('visibility', 'visible');
+    svg.querySelectorAll('.dot').forEach(dt => { const v = data[dt.dataset.c][i]; dt.setAttribute('cx', x(i)); dt.setAttribute('cy', y(v)); dt.setAttribute('visibility', 'visible'); });
+    showTip(`<b>${fmtDay(days[i])}</b><br>` + cs.map(c => `<span class="tsw" style="background:${C[c]}"></span>${NAME[c]}: ${dp ? data[c][i].toFixed(dp) : data[c][i].toLocaleString()}${unit}`).join('<br>'), e);
+  });
+  hit.addEventListener('mouseleave', () => { xh.setAttribute('visibility', 'hidden'); svg.querySelectorAll('.dot').forEach(d => d.setAttribute('visibility', 'hidden')); hideTip(); });
+  legendEl.innerHTML = cs.length > 1 ? cs.map(c => `<span><span class="sw" style="background:${C[c]}"></span>${NAME[c]}</span>`).join('') : '';
+  tableEl.innerHTML = `<table><tr><th>Date</th>${cs.map(c => `<th class="num">${NAME[c]}</th>`).join('')}</tr>` +
+    days.map((d, i) => `<tr><td>${fmtDay(d)}</td>${cs.map(c => `<td class="num">${dp ? data[c][i].toFixed(dp) : data[c][i].toLocaleString()}</td>`).join('')}</tr>`).join('') + '</table>';
+}
+function renderTrends(){
+  lineChart({ el: trend, legendEl: trendLegend, tableEl: trendTable, data: daily[state.dir], notes: annotations.roamers, unit: '' });
+  lineChart({ el: document.getElementById('speed'), legendEl: speedLegend, tableEl: speedTable, data: speed[state.dir], notes: annotations.speed, unit: ' Mbps', dp: 1, fixedMax: 60, W: 620 });
+  document.getElementById('trendTitle').textContent = state.dir === 'out' ? 'Daily outbound roamers' : 'Daily inbound visitors';
+}
+document.querySelectorAll('.linkish[data-table]').forEach(a => a.addEventListener('click', () => {
+  const id = a.dataset.table, t = document.getElementById(id + 'Table'), c = document.getElementById(id);
+  const show = t.style.display !== 'block';
+  t.style.display = show ? 'block' : 'none'; c.style.display = show ? 'none' : 'block';
+  a.textContent = show ? 'View as chart' : 'View as table';
+}));
+
+// ---------- Scatter: speed vs latency (each dot = a partner) ----------
+function renderScatter(){
+  const P = partners[state.dir].filter(p => inCty(p.c));
+  const C = COLOR(), grid = css('--grid'), axis = css('--axis'), muted = css('--muted'), ink2 = css('--ink-2'), surface = css('--surface');
+  const W = 470, H = 230, m = { l: 40, r: 110, t: 10, b: 32 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, xmax = 160, ymax = 60;
+  const x = v => m.l + v / xmax * iw, y = v => m.t + ih - v / ymax * ih;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
+  for (let v = 0; v <= ymax; v += 15) {
+    s += `<line x1="${m.l}" x2="${m.l + iw}" y1="${y(v)}" y2="${y(v)}" stroke="${v ? grid : axis}"/>`;
+    s += `<text x="${m.l - 6}" y="${y(v) + 4}" font-size="10" fill="${muted}" text-anchor="end">${v}</text>`;
+  }
+  for (let v = 0; v <= xmax; v += 40) s += `<text x="${x(v)}" y="${m.t + ih + 14}" font-size="10" fill="${muted}" text-anchor="middle">${v}</text>`;
+  s += `<line x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ih}" stroke="${axis}"/>`;
+  s += `<text x="${m.l + iw / 2}" y="${H - 2}" font-size="10.5" fill="${ink2}" text-anchor="middle">Median latency (ms) → worse</text>`;
+  s += `<text transform="translate(11 ${m.t + ih / 2}) rotate(-90)" font-size="10.5" fill="${ink2}" text-anchor="middle">Download (Mbps) ↑ better</text>`;
+  s += `<text x="${m.l + 6}" y="${m.t + 12}" font-size="10" fill="${muted}">Best experience</text>`;
+  // Direct labels: nudge so they keep ≥ 12px apart vertically
+  const lab = P.map(p => ({ p, ly: y(p.dl) + 4 })).sort((a, b) => a.ly - b.ly);
+  for (let i = 1; i < lab.length; i++) if (lab[i].ly - lab[i - 1].ly < 12) lab[i].ly = lab[i - 1].ly + 12;
+  lab.forEach(({ p, ly }) => {
+    s += `<circle cx="${x(p.lat)}" cy="${y(p.dl)}" r="7" fill="${C[p.c]}" stroke="${surface}" stroke-width="2"/>`;
+    s += `<text x="${m.l + iw + 8}" y="${ly}" font-size="10.5" fill="${ink2}">${p.name}</text>`;
+    s += `<line x1="${x(p.lat) + 7}" y1="${y(p.dl)}" x2="${m.l + iw + 5}" y2="${ly - 4}" stroke="${grid}"/>`;
+    s += `<circle class="sh" data-id="${p.id}" cx="${x(p.lat)}" cy="${y(p.dl)}" r="13" fill="transparent"/>`;
+  });
+  s += '</svg>';
+  const el = document.getElementById('scatter'); el.innerHTML = s;
+  el.querySelectorAll('.sh').forEach(h => {
+    const p = P.find(q => q.id === h.dataset.id);
+    h.addEventListener('mousemove', e => showTip(`<b>${p.name}</b> · ${NAME[p.c]}<br>Download ${p.dl} Mbps · Upload ${p.ul} Mbps<br>Latency ${p.lat} ms`, e));
+    h.addEventListener('mouseleave', hideTip);
+  });
+  document.getElementById('scatterCap').textContent = state.dir === 'out'
+    ? 'Our subscribers on each partner network. Top-left is best.'
+    : "Visitors on our network, by home operator. Same network, but home routing adds latency.";
+}
+
+// ---------- Bars (horizontal, colored by country identity) ----------
+function renderBars(){
+  const P = partners[state.dir].filter(p => inCty(p.c)).sort((a, b) => b.mb - a.mb);
+  const C = COLOR(), axis = css('--axis'), ink = css('--ink'), ink2 = css('--ink-2');
+  const W = 620, rowH = 30, m = { l: 120, r: 46, t: 4 }, H = m.t + P.length * rowH + 6;
+  const max = 500, iw = W - m.l - m.r;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
+  s += `<line x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${H - 4}" stroke="${axis}"/>`;
+  P.forEach((p, i) => {
+    const yy = m.t + i * rowH + 6, w = p.mb / max * iw, h = rowH - 12;
+    s += `<text x="${m.l - 8}" y="${yy + h / 2 + 4}" font-size="11.5" fill="${ink2}" text-anchor="end">${p.name}</text>`;
+    s += `<path d="M${m.l} ${yy} H${m.l + w - 4} a4 4 0 0 1 4 4 V${yy + h - 4} a4 4 0 0 1 -4 4 H${m.l} Z" fill="${C[p.c]}"/>`;
+    s += `<text x="${m.l + w + 6}" y="${yy + h / 2 + 4}" font-size="11" fill="${ink}">${p.mb}</text>`;
+    s += `<rect class="bh" data-i="${i}" x="0" y="${m.t + i * rowH}" width="${W}" height="${rowH}" fill="transparent"/>`;
+  });
+  s += '</svg>';
+  const el = document.getElementById('bars'); el.innerHTML = s;
+  el.querySelectorAll('.bh').forEach(r => {
+    r.addEventListener('mousemove', e => { const p = P[r.dataset.i]; showTip(`<b>${p.name}</b> · ${NAME[p.c]}<br>${p.mb} MB per roamer per day<br>${p.n.toLocaleString()} ${state.dir === 'out' ? 'roamers' : 'visitors'}`, e); });
+    r.addEventListener('mouseleave', hideTip);
+  });
+}
+
+// ---------- Partner table ----------
+// Status rule: Critical if reg < 93% or download < 10 Mbps or latency > 120 ms;
+// Watch if reg < 98% or download < 25 Mbps or latency > 80 ms; otherwise Healthy.
+function statusOf(p){
+  if (p.reg < 93 || p.dl < 10 || p.lat > 120) return `<span class="status"><i style="background:var(--critical)">✕</i>Critical</span>`;
+  if (p.reg < 98 || p.dl < 25 || p.lat > 80) return `<span class="status"><i style="background:var(--warning);color:#0b0b0b">!</i>Watch</span>`;
+  return `<span class="status"><i style="background:var(--good)">✓</i>Healthy</span>`;
+}
+function renderTable(){
+  const P = partners[state.dir].filter(p => inCty(p.c));
+  const C = COLOR();
+  const tot = c => partners[state.dir].filter(p => p.c === c).reduce((s, p) => s + p.n, 0);
+  const out = state.dir === 'out';
+  document.getElementById('tblTitle').textContent = out ? 'Partner scorecard · outbound' : 'Home-operator scorecard · inbound';
+  document.getElementById('tblCap').textContent = (out
+    ? "Partner networks our subscribers attach to abroad. Steering target: ≥ 80% of each country's roamers on the preferred partner. "
+    : 'Foreign operators whose subscribers visit our network. ')
+    + 'Status: Critical if registration < 93%, download < 10 Mbps or latency > 120 ms; Watch if < 98%, < 25 Mbps or > 80 ms.';
+  document.getElementById('partners').innerHTML =
+    `<tr><th>${out ? 'Partner network' : 'Visitor home operator'}</th><th>Country</th><th class="num">${out ? 'Roamers' : 'Visitors'}</th><th class="num">Share of country</th><th class="num">Registration success</th><th class="num">MB / roamer / day</th><th class="num">Download (Mbps)</th><th class="num">Upload (Mbps)</th><th class="num">Latency (ms)</th><th>Status</th></tr>` +
+    P.map(p => `<tr class="row"><td>${p.name}${p.pref ? '<span class="pref">Preferred</span>' : ''}</td><td><span class="sw" style="background:${C[p.c]}"></span>${NAME[p.c]}</td>
+      <td class="num">${p.n.toLocaleString()}</td><td class="num">${(p.n / tot(p.c) * 100).toFixed(0)}%</td><td class="num">${p.reg.toFixed(1)}%</td>
+      <td class="num">${p.mb}</td><td class="num">${p.dl.toFixed(1)}</td><td class="num">${p.ul.toFixed(1)}</td><td class="num">${p.lat}</td><td>${statusOf(p)}</td></tr>`).join('');
+}
+
+// ---------- Wiring ----------
+function renderAll(){ renderKpis(); renderMap(); renderTrends(); renderScatter(); renderBars(); renderTable(); }
+function seg(id, key){
+  document.querySelectorAll(`#${id} button`).forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle('on', x === b));
+    state[key] = b.dataset.v; renderAll();
+  }));
+}
+seg('fDir', 'dir'); seg('fCty', 'cty');
+
+const themeBtn = document.getElementById('themeToggle');
+const labelTheme = () => themeBtn.textContent = document.documentElement.dataset.theme === 'dark' ? '☀ Light mode' : '☾ Dark mode';
+themeBtn.addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('theme', next);
+  labelTheme(); renderAll();   // charts read colors from CSS variables, so re-render
+});
+labelTheme();
+
+document.getElementById('phToggle').addEventListener('click', e => {
+  const on = document.body.classList.toggle('ph-on');
+  e.target.classList.toggle('on', on);
+  e.target.textContent = on ? '◉ Hide PostHog tracking' : '◉ Show PostHog tracking';
+});
+renderAll();
+</script>
+</body>
+</html>
