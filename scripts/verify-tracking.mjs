@@ -1,7 +1,8 @@
 // End-to-end tracking check: drives a real browser session through the portal and decodes every
 // request sent to the PostHog proxy (/lens-relay), so we can see exactly which events leave the browser.
 //
-//   node scripts/verify-tracking.mjs [base_url]      (default http://localhost:3000)
+//   node scripts/verify-tracking.mjs [base_url] [--error]   (default http://localhost:3000)
+//   --error also throws a labeled test error in the page to check exception autocapture.
 //
 // Note: this sends real events to the configured PostHog project, tagged environment=development.
 // posthog-js drops events from headless browsers by default, so the script overrides the user agent.
@@ -11,7 +12,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-const BASE = process.argv[2] ?? "http://localhost:3000";
+const args = process.argv.slice(2);
+const BASE = args.find((a) => !a.startsWith("--")) ?? "http://localhost:3000";
+const WITH_ERROR = args.includes("--error");
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9334;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -110,6 +113,11 @@ try {
   await click("view a chart as table", byText("button.linkish", "View as table"));
   await click("toggle border-zone layer", `document.querySelector(".maplegend input[type=checkbox]")`);
   await sleep(500);
+  if (WITH_ERROR) {
+    await run(`setTimeout(() => { throw new Error("RoamLens test: browser error capture check"); }, 0)`);
+    console.log("✓ throw a test browser error");
+    await sleep(1500);
+  }
   await click("open Maplelink Mobile partner page", byText("tr.row a", "Maplelink"));
   await sleep(3000);
   await click("go to Reports", byText("nav.sidenav a", "Reports"));
@@ -124,7 +132,7 @@ try {
   await Promise.all(bodies);
   console.log(`\nProxy responses: ${[...new Set(statuses)].join(", ") || "none"}`);
   console.log(`Events sent: ${events.length}\n`);
-  const show = ["page_name", "filter_name", "filter_value", "chart_id", "view", "theme", "is_enabled", "partner_id", "report_type", "role", "account_id", "environment", "traffic_source_type", "app_version"];
+  const show = ["$exception_message", "page_name", "filter_name", "filter_value", "chart_id", "view", "theme", "is_enabled", "partner_id", "report_type", "role", "account_id", "environment", "traffic_source_type", "app_version"];
   for (const ev of events) {
     const p = ev.properties ?? {};
     const extras = show.filter((k) => p[k] !== undefined).map((k) => `${k}=${p[k]}`).join(" ");
