@@ -35,4 +35,4 @@ npm run typecheck
 | `lib/` | Data selectors, formatting, CSV, demo session |
 | `datagen/` | Python generator for the synthetic roaming dataset |
 | `data/` | Generated dataset (JSON) |
-| `docs/` | [PostHog setup checklist](docs/posthog-setup-checklist.md), [project plan](docs/project-plan.md), [tracking plan](docs/tracking-plan.md), [data dictionary](docs/data-dictionary.md), [design mockup](docs/mockups/portal-mockup.html) |
+| `docs/` | [Case study](docs/case-study.md), [dashboard spec](docs/dashboard-spec.md), [PostHog setup checklist](docs/posthog-setup-checklist.md), [project plan](docs/project-plan.md), [tracking plan](docs/tracking-plan.md), [data dictionary](docs/data-dictionary.md), [design mockup](docs/mockups/portal-mockup.html) |

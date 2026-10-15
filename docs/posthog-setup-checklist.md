@@ -36,5 +36,5 @@ Settings that live in the PostHog UI rather than in code. Read the linked docs f
 
 ## Later phases
 - [ ] Phase 6: dashboard, cohorts, insight alert on account usage, release annotations
-- [ ] Phase 7: Corvalia case study (notebook) + hosted-link support satisfaction survey
+- [ ] Phase 7: run the case-study SQL queries in PostHog and add screenshots to `docs/case-study.md` (optional: notebook, hosted-link CSAT survey)
 - [ ] Public share links for the dashboard and selected replays
