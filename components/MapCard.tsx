@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { RoamingMap } from "@/components/RoamingMap";
+import { track } from "@/lib/analytics";
 import type { MapPoint } from "@/lib/data";
 import { fmtInt } from "@/lib/format";
 import type { Direction } from "@/lib/types";
@@ -32,6 +33,12 @@ export function MapCard({ direction, windowLabel, points, zones, fitKey }: Props
     [out],
   );
 
+  const onMarkerClick = useCallback(
+    (kind: "city" | "border_zone", p: MapPoint) =>
+      track("map_marker_clicked", { location_type: kind, country_code: p.country, direction, location_name: p.name }),
+    [direction],
+  );
+
   return (
     <div className="card">
       <h3>{out ? "Where our subscribers roam" : "Where visitors use our network"}</h3>
@@ -40,13 +47,13 @@ export function MapCard({ direction, windowLabel, points, zones, fitKey }: Props
       </div>
       <RoamingMap
         points={points} zones={zones} showZones={showZones} fitKey={fitKey}
-        pointTooltip={pointTooltip} zoneTooltip={zoneTooltip}
+        pointTooltip={pointTooltip} zoneTooltip={zoneTooltip} onMarkerClick={onMarkerClick}
       />
       <div className="maplegend">
         <span><span className="sw" style={{ background: "var(--ca)" }} />Canada</span>
         <span><span className="sw" style={{ background: "var(--mx)" }} />Mexico</span>
         <label>
-          <input type="checkbox" checked={showZones} onChange={(e) => setShowZones(e.target.checked)} />{" "}
+          <input type="checkbox" checked={showZones} onChange={(e) => { setShowZones(e.target.checked); track("border_layer_toggled", { is_enabled: e.target.checked }); }} />{" "}
           <span className="sw sq" style={{ background: "var(--ink-2)" }} />Border-zone hotspots
         </label>
       </div>

@@ -152,3 +152,16 @@ describe("session", () => {
     expect(newUserId("corvalia", "manager", () => 0.5)).toMatch(/^corvalia_manager_[0-9a-z]{6}$/);
   });
 });
+
+describe("analytics", () => {
+  it("maps paths to tracking-plan page names", async () => {
+    const { pageName } = await import("@/lib/analytics");
+    expect(pageName("/")).toBe("sign_in");
+    expect(pageName("/overview")).toBe("overview");
+    expect(pageName("/partners")).toBe("partners");
+    expect(pageName("/partners/costa")).toBe("partner_detail");
+    expect(pageName("/reports")).toBe("reports");
+    expect(pageName("/alerts")).toBe("alerts");
+    expect(pageName("/elsewhere")).toBe("other");
+  });
+});

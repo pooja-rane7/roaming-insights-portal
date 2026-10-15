@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Swatch, useTooltip } from "@/components/Tooltip";
+import { track } from "@/lib/analytics";
 import { fmtCompact, fmtDay, fmtDayYear, fmtMonthYear } from "@/lib/format";
 import { niceMax, spreadLabels, tickIndices } from "@/lib/scale";
 import type { Annotation, Series } from "@/lib/types";
@@ -70,7 +71,7 @@ export function LineChart({ title, caption, dates, series, annotations = [], uni
       <h3>{title}</h3>
       <div className="cap">
         {caption}{" "}
-        <button className="linkish" onClick={() => setAsTable((v) => !v)} data-chart-id={chartId}>
+        <button className="linkish" onClick={() => { setAsTable(!asTable); track("chart_view_toggled", { chart_id: chartId, view: asTable ? "chart" : "table" }); }}>
           {asTable ? "View as chart" : "View as table"}
         </button>
       </div>

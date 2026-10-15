@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
+import { after } from "next/server";
+import { captureServer } from "@/lib/analytics-server";
 import { parseFilters } from "@/lib/data";
 import { buildReport, isReportId } from "@/lib/reports";
 import { SESSION_COOKIE, decodeSession } from "@/lib/session";
 
-// Builds CSV exports on the server. In Phase 4 this is where the server-side
-// `report_generated` event is sent, so exports are counted even if ad blockers drop client events.
+// Builds CSV exports on the server and records a server-side `report_generated` event, so exports
+// are counted even when ad blockers drop the browser's `report_exported` event.
 export async function GET(req: Request) {
   const session = decodeSession((await cookies()).get(SESSION_COOKIE)?.value);
   if (!session) return new Response("Sign in to export data.", { status: 401 });
@@ -13,7 +15,13 @@ export async function GET(req: Request) {
   const report = params.report ?? "partner_scorecard";
   if (!isReportId(report)) return new Response(`Unknown report: ${report}`, { status: 400 });
 
-  const { filename, csv } = buildReport(report, parseFilters(params));
+  const started = performance.now();
+  const f = parseFilters(params);
+  const { filename, csv, rows } = buildReport(report, f);
+  const durationMs = Math.round(performance.now() - started);
+  after(() => captureServer(session, "report_generated", {
+    report_type: report, row_count: rows, duration_ms: durationMs, direction: f.direction, country_filter: f.country, window: f.window,
+  }));
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

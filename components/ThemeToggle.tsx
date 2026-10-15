@@ -1,6 +1,8 @@
 "use client";
 
+import posthog from "posthog-js";
 import { useEffect, useState } from "react";
+import { analyticsEnabled, track } from "@/lib/analytics";
 
 /** Light/dark switch. The theme is applied before first paint by the script in app/layout.tsx. */
 export function ThemeToggle() {
@@ -15,6 +17,8 @@ export function ThemeToggle() {
     document.documentElement.dataset.theme = next ? "dark" : "light";
     localStorage.setItem("theme", next ? "dark" : "light");
     setDark(next);
+    track("theme_changed", { theme: next ? "dark" : "light" });
+    if (analyticsEnabled()) posthog.setPersonProperties({ preferred_theme: next ? "dark" : "light" });
   }
 
   return (

@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { pageName, track } from "@/lib/analytics";
 import { WINDOW_LABEL } from "@/lib/format";
 import type { Filters } from "@/lib/types";
 
@@ -31,6 +32,7 @@ export function FilterBar({ filters, show = ["direction", "country", "window"] }
   function set(key: Key, value: string) {
     const next = new URLSearchParams(params.toString());
     next.set(key, value);
+    track("filter_applied", { filter_name: key, filter_value: value, page_name: pageName(pathname) });
     startTransition(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
   }
 

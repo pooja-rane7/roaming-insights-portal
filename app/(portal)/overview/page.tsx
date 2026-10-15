@@ -1,6 +1,7 @@
 import { BarChart } from "@/components/charts/BarChart";
 import { LineChart } from "@/components/charts/LineChart";
 import { ScatterChart } from "@/components/charts/ScatterChart";
+import { ExportLink } from "@/components/ExportLink";
 import { FilterBar } from "@/components/FilterBar";
 import { KpiTiles } from "@/components/KpiTiles";
 import { MapCard } from "@/components/MapCard";
@@ -10,7 +11,7 @@ import {
   getAnnotations, getBorderZones, getCountryDaily, getLocations, getPartnerRows, getSummary, metadata, parseFilters, windowRange,
 } from "@/lib/data";
 import { WINDOW_LABEL, fmtDayYear } from "@/lib/format";
-import { dataPerRoamerBars, exportHref, speedLatencyPoints, summaryKpis } from "@/lib/views";
+import { dataPerRoamerBars, speedLatencyPoints, summaryKpis } from "@/lib/views";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -34,7 +35,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
         </div>
         <div className="actions">
           <ThemeToggle />
-          <a className="btn" href={exportHref("partner_scorecard", f)} download>⤓ Export CSV</a>
+          <ExportLink report="partner_scorecard" filters={f} />
         </div>
       </div>
       <div className="banner">Demo data. Every operator and number is <b>fictional</b>.</div>

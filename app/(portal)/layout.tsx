@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { AnalyticsIdentity, AnalyticsProvider } from "@/components/Analytics";
 import { SideNav } from "@/components/SideNav";
 import { ROLES, SESSION_COOKIE, decodeSession, getAccount } from "@/lib/session";
 
@@ -10,9 +11,12 @@ export default async function PortalLayout({ children }: { children: React.React
   const role = ROLES.find((r) => r.id === session.role)!;
 
   return (
-    <div className="app">
-      <SideNav accountName={account.name} roleLabel={role.label} />
-      <main>{children}</main>
-    </div>
+    <AnalyticsProvider>
+      <AnalyticsIdentity session={session} account={account} />
+      <div className="app">
+        <SideNav accountName={account.name} roleLabel={role.label} />
+        <main>{children}</main>
+      </div>
+    </AnalyticsProvider>
   );
 }

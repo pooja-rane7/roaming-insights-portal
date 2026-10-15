@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { TrackOnMount } from "@/components/Analytics";
 import { LineChart } from "@/components/charts/LineChart";
 import { FilterBar } from "@/components/FilterBar";
 import { KpiTiles } from "@/components/KpiTiles";
@@ -29,6 +30,7 @@ export default async function PartnerPage({ params, searchParams }: { params: Pa
 
   return (
     <>
+      <TrackOnMount event="partner_scorecard_opened" properties={{ partner_id: id, direction: f.direction, partner_status: p.status, window: f.window }} />
       <Link className="back" href={`/partners?direction=${f.direction}&window=${f.window}`}>← All partners</Link>
       <div className="top">
         <div>

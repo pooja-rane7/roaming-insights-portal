@@ -12,8 +12,8 @@ roaming analysts, managers and finance staff at those operators. RoamLens is the
 |---|---|---|
 | Q1 | Do new users reach value? (% who export a report within 7 days of first login) | Funnel |
 | Q2 | Which features keep users coming back weekly? | Retention, broken down by feature used |
-| Q3 | How healthy is each customer account? (weekly active users, seats used, feature breadth) | Group analytics |
-| Q4 | Did the experience-metrics beta increase engagement for the accounts that got it? | Feature flag + trends by flag value |
+| Q3 | How healthy is each customer account? (weekly active users, seats used, feature breadth) | Breakdowns by `account_id` (see §4) |
+| Q4 | Do accounts with the Alerts beta engage more? | Feature flag + trends by flag value |
 | Q5 | Where do analysts get stuck (e.g. on the map)? | Session replay |
 | Q6 | Are we losing events? (client vs. server export counts) | SQL (HogQL) |
 
@@ -40,27 +40,37 @@ Registered once and attached to every event.
 |---|---|
 | Anonymous visitor | Landing page only; posthog-js anonymous `distinct_id` |
 | Demo sign-in | Visitor picks an account + role ("Sign in as analyst at Meridian Mobile"). We call `posthog.identify(user_id)` with a generated ID. |
-| Account | `posthog.group('company', account_id)` immediately after identify, on **every** session start |
+| Account | `posthog.group('company', account_id)` on every page load after sign-in, **and** `account_id` / `account_name` / `account_plan` registered as super properties |
 | Person properties | `role` (`analyst` / `manager` / `finance`), `team`, `preferred_theme` |
 | Group properties | `name`, `plan` (`starter` / `growth` / `enterprise`), `seats`, `home_country`, `renewal_date` |
 | Sign-out | `posthog.reset()` so the next demo user isn't merged into the previous one |
 
-Known risk: if a release forgets to call `group()`, events lose their account and per-account usage looks like a crash while total usage looks fine. This is the leading case-study candidate.
+**Why both?** Group analytics is a paid PostHog add-on (billing starts when it's enabled). This project runs on the free plan, so per-account analysis uses the `account_*` super properties, which work in every insight as breakdowns and filters. The `group()` call is still made, so enabling the add-on later needs no code change.
 
-## 5. Events
+Known risk: if a release stops registering the account properties, events lose their account and per-account usage looks like a crash while total usage looks fine. This is the leading case-study candidate.
+
+## 5. Implementation notes
+
+- **Tracking plan as code:** `lib/analytics.ts` defines every client event and its properties as TypeScript types, so an off-plan event doesn't compile. Server events are typed in `lib/analytics-server.ts`.
+- **Reverse proxy:** posthog-js sends to `/lens-relay/*`, which Next.js rewrites to PostHog US Cloud (`next.config.ts`).
+- **Bots are filtered:** posthog-js ignores headless and bot user agents by default. `scripts/verify-tracking.mjs` overrides the user agent so automated checks can see events.
+- **Idempotent effects:** React Strict Mode runs effects twice in development; mount-time events are guarded so they fire once per page view.
+- **Verification:** `node scripts/verify-tracking.mjs` drives a real sign-in → filter → partner → export → sign-out session and prints every event sent through the proxy.
+
+## 6. Events
 
 ### Client-side
 
 | Event | Trigger | Properties |
 |---|---|---|
-| `$pageview` | Route change (SPA) | PostHog defaults + `page_name` |
-| `user_signed_in` | Demo sign-in completed | `role`, `account_plan` |
+| `$pageview` | Route change (SPA, via `defaults`) | PostHog defaults (`$pathname`, `$current_url`) |
+| `user_signed_in` | First portal page after a demo sign-in | `role`, `account_plan` |
 | `filter_applied` | Direction / country / period changed | `filter_name`, `filter_value`, `page_name` |
-| `map_marker_clicked` | User clicks a map location | `location_type` (`city` / `border_zone`), `country_code`, `direction` |
+| `map_marker_clicked` | User clicks a map location | `location_type` (`city` / `border_zone`), `country_code`, `direction`, `location_name` |
 | `border_layer_toggled` | Border-zone layer on/off | `is_enabled` |
-| `partner_scorecard_opened` | User opens a partner's detail | `partner_id`, `direction`, `partner_status` |
+| `partner_scorecard_opened` | Partner detail page viewed | `partner_id`, `direction`, `partner_status`, `window` |
 | `chart_view_toggled` | Chart ↔ table view | `chart_id`, `view` (`chart` / `table`) |
-| `report_exported` | Export completes in the browser | `report_type`, `format`, `direction`, `country_filter` |
+| `report_exported` | User clicks an export (button or Reports form) | `report_type`, `format`, `direction`, `country_filter`, `window`, `page_name` |
 | `alert_created` | User creates an alert (flag: `alerts-beta`) | `metric`, `threshold`, `partner_id` |
 | `theme_changed` | Light/dark toggle | `theme` |
 
@@ -68,31 +78,30 @@ Known risk: if a release forgets to call `group()`, events lose their account an
 
 | Event | Trigger | Properties |
 |---|---|---|
-| `report_generated` | `/api/export` builds the CSV | `report_type`, `row_count`, `duration_ms`, `source: "server"` |
+| `report_generated` | `/api/export` builds the CSV (sent with `after()`, never delays the download) | `report_type`, `row_count`, `duration_ms`, `direction`, `country_filter`, `window`, `source: "server"`, plus the account and environment properties |
 
 **Why server-side?** Ad blockers and closed tabs drop client events. The export is built on our server, so this event is reliable. Comparing `report_exported` with `report_generated` measures client-side event loss (Q6).
 
-## 6. Feature flags
+## 7. Feature flags
 
 | Flag key | Rollout | Purpose |
 |---|---|---|
-| `experience-metrics-beta` | Meridian Mobile first, then all accounts | Speed/latency charts and Experience page (Q4) |
-| `alerts-beta` | Internal + Meridian Mobile | Alerts page |
+| `alerts-beta` | Person property `account_id = meridian` (then wider) | Shows the Alerts page and nav item (Q4) |
 
 No A/B experiment: with a few dozen B2B users, an experiment wouldn't reach significance. Saying that clearly is part of the job.
 
-## 7. Data-quality checks (run after instrumentation)
+## 8. Data-quality checks (run after instrumentation)
 
-- Every event after sign-in has a `company` group.
+- Every event after sign-in has `account_id`.
 - No event is missing `traffic_source_type` or `app_version`.
 - `$pageview` fires exactly once per route change.
 - `report_exported` ÷ `report_generated` is within the expected range.
 - No `environment = development` events in production dashboards.
 - One person per demo user (no accidental merges after sign-out).
 
-## 8. Case-study candidates (choose one in Phase 7)
+## 9. Case-study candidates (choose one in Phase 7)
 
-1. **Missing group call**: a "login refactor" drops `posthog.group()`. Corvalia's account usage "drops 60%" while total usage is flat.
+1. **Missing account properties**: a "login refactor" stops registering `account_*` properties. Corvalia's account usage "drops 60%" while total usage is flat.
 2. **Identity merge**: sign-out skips `reset()`, so several demo users merge into one person.
 3. **Double pageviews**: a routing change fires `$pageview` twice, inflating usage and deflating conversion.
 4. **Ad-blocker loss**: the reverse proxy is removed; client events drop while server events don't.

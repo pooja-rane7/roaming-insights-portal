@@ -1,11 +1,12 @@
 import { BarChart } from "@/components/charts/BarChart";
 import { ScatterChart } from "@/components/charts/ScatterChart";
+import { ExportLink } from "@/components/ExportLink";
 import { FilterBar } from "@/components/FilterBar";
 import { PartnerTable } from "@/components/PartnerTable";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getPartnerRows, parseFilters } from "@/lib/data";
 import { WINDOW_LABEL } from "@/lib/format";
-import { dataPerRoamerBars, exportHref, speedLatencyPoints } from "@/lib/views";
+import { dataPerRoamerBars, speedLatencyPoints } from "@/lib/views";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -23,7 +24,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Sea
         </div>
         <div className="actions">
           <ThemeToggle />
-          <a className="btn" href={exportHref("partner_scorecard", f)} download>⤓ Export CSV</a>
+          <ExportLink report="partner_scorecard" filters={f} />
         </div>
       </div>
       <FilterBar filters={f} />

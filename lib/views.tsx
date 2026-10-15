@@ -55,7 +55,3 @@ export function dataPerRoamerBars(rows: PartnerRow[], f: Filters): Bar[] {
       ),
     }));
 }
-
-export function exportHref(report: string, f: Filters) {
-  return `/api/export?report=${report}&direction=${f.direction}&country=${f.country}&window=${f.window}`;
-}
