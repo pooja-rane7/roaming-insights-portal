@@ -6,17 +6,20 @@ export const SESSION_COOKIE = "rl_session";
 export type Plan = "starter" | "growth" | "enterprise";
 export type Role = "analyst" | "manager" | "finance";
 
+export type LoginMethod = "password" | "sso";
+
 export interface Account {
   id: string;
   name: string;
   plan: Plan;
   seats: number;
+  loginMethod: LoginMethod;
 }
 
 export const ACCOUNTS: Account[] = [
-  { id: "meridian", name: "Meridian Mobile", plan: "enterprise", seats: 25 },
-  { id: "corvalia", name: "Corvalia Wireless", plan: "growth", seats: 12 },
-  { id: "lakeshore", name: "Lakeshore Cellular", plan: "starter", seats: 5 },
+  { id: "meridian", name: "Meridian Mobile", plan: "enterprise", seats: 25, loginMethod: "password" },
+  { id: "corvalia", name: "Corvalia Wireless", plan: "growth", seats: 12, loginMethod: "sso" },
+  { id: "lakeshore", name: "Lakeshore Cellular", plan: "starter", seats: 5, loginMethod: "password" },
 ];
 
 export const ROLES: { id: Role; label: string; description: string }[] = [

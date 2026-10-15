@@ -4,13 +4,13 @@ import { PostHogProvider } from "@posthog/react";
 import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
 import { analyticsEnabled, track, type EventMap } from "@/lib/analytics";
+import { identityCalls } from "@/lib/identity";
 import type { Account, Session } from "@/lib/session";
 
 /**
  * Ties the browser's PostHog identity to the signed-in demo user and their customer account.
- * - identify(): once per sign-in (each sign-in creates a new user id)
- * - group('company'): every session start. Requires PostHog's paid group analytics add-on to be
- *   queryable, so we also register account_* super properties as a free alternative.
+ * The calls themselves are planned in lib/identity.ts. group('company') requires PostHog's paid
+ * group analytics add-on to be queryable, so account_* super properties are the free alternative.
  */
 export function AnalyticsIdentity({ session, account }: { session: Session; account: Account }) {
   // Effects can run twice for one page load (React Strict Mode in development); send once.
@@ -18,14 +18,12 @@ export function AnalyticsIdentity({ session, account }: { session: Session; acco
   useEffect(() => {
     if (!analyticsEnabled() || done.current === session.userId) return;
     done.current = session.userId;
-    const accountProps = { account_id: account.id, account_name: account.name, account_plan: account.plan };
-    posthog.register(accountProps);
-    const isNewSignIn = posthog.get_distinct_id() !== session.userId;
-    if (isNewSignIn) {
-      posthog.identify(session.userId, { role: session.role, team: "roaming", ...accountProps });
+    for (const call of identityCalls(session, account, posthog.get_distinct_id())) {
+      if (call.type === "identify") posthog.identify(call.distinctId, call.personProperties);
+      else if (call.type === "register") posthog.register(call.properties);
+      else if (call.type === "group") posthog.group(call.groupType, call.groupKey, call.groupProperties);
+      else track(call.event, call.properties);
     }
-    posthog.group("company", account.id, { name: account.name, plan: account.plan, seats: account.seats, home_country: "US" });
-    if (isNewSignIn) track("user_signed_in", { role: session.role, account_plan: account.plan });
   }, [session, account]);
   return null;
 }

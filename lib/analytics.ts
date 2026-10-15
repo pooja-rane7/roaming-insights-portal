@@ -6,7 +6,7 @@ import type { Direction, WindowKey } from "./types";
 export type PageName = "sign_in" | "overview" | "partners" | "partner_detail" | "reports" | "alerts" | "other";
 
 export interface EventMap {
-  user_signed_in: { role: string; account_plan: string };
+  user_signed_in: { role: string; account_plan: string; login_method: string };
   filter_applied: { filter_name: "direction" | "country" | "window"; filter_value: string; page_name: PageName };
   map_marker_clicked: { location_type: "city" | "border_zone"; country_code: string; direction: Direction; location_name: string };
   border_layer_toggled: { is_enabled: boolean };
