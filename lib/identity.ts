@@ -23,10 +23,9 @@ export function identityCalls(session: Session, account: Account, currentDistinc
     type: "group", groupType: "company", groupKey: account.id,
     groupProperties: { name: account.name, plan: account.plan, seats: account.seats, home_country: "US" },
   });
-  if (account.loginMethod === "password") {
-    // Password sign-ins restore the account context from the session cookie.
-    calls.push({ type: "register", properties: accountProps });
-  }
+  // Every sign-in method must register the account super properties: per-account reporting
+  // depends on them. (0.3.0 only did this for password sign-ins, so SSO accounts lost account_id.)
+  calls.push({ type: "register", properties: accountProps });
   if (isNewSignIn) {
     calls.push({ type: "capture", event: "user_signed_in", properties: { role: session.role, account_plan: account.plan, login_method: account.loginMethod } });
   }
