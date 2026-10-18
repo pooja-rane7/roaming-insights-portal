@@ -17,7 +17,11 @@ if (token) {
   // localStorage.roamlens_traffic = "test" so our own checks never count as real usage.
   let trafficType = "real";
   try {
-    if (localStorage.getItem("roamlens_traffic") === "test") trafficType = "test";
+    if (localStorage.getItem("roamlens_traffic") === "test") {
+      trafficType = "test";
+      // Mirror the flag into a cookie so server-side events (e.g. report_generated) are tagged too.
+      document.cookie = "roamlens_traffic=test; path=/; SameSite=Lax; max-age=31536000";
+    }
   } catch {
     // storage unavailable (privacy mode); treat as real
   }

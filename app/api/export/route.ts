@@ -8,7 +8,9 @@ import { SESSION_COOKIE, decodeSession } from "@/lib/session";
 // Builds CSV exports on the server and records a server-side `report_generated` event, so exports
 // are counted even when ad blockers drop the browser's `report_exported` event.
 export async function GET(req: Request) {
-  const session = decodeSession((await cookies()).get(SESSION_COOKIE)?.value);
+  const jar = await cookies();
+  const session = decodeSession(jar.get(SESSION_COOKIE)?.value);
+  const trafficType = jar.get("roamlens_traffic")?.value === "test" ? "test" : "real";
   if (!session) return new Response("Sign in to export data.", { status: 401 });
 
   const params = Object.fromEntries(new URL(req.url).searchParams);
@@ -21,7 +23,7 @@ export async function GET(req: Request) {
   const durationMs = Math.round(performance.now() - started);
   after(() => captureServer(session, "report_generated", {
     report_type: report, row_count: rows, duration_ms: durationMs, direction: f.direction, country_filter: f.country, window: f.window,
-  }));
+  }, trafficType));
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

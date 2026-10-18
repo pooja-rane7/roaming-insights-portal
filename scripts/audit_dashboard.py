@@ -81,9 +81,9 @@ check("6 fully observed cohorts", len(rows) == 6, f"{len(rows)}")
 check("every cell between 0 and 100, none zero", all(0 < v <= 100 for v in pcts), f"min {min(pcts)}, max {max(pcts)}")
 
 print("Feature adoption (Sep 18 – Oct 17)")
-active = scalar("SELECT uniq(person_id) FROM events WHERE event = 'user_signed_in' AND properties.environment = 'production' "
+active = scalar("SELECT uniq(person_id) FROM events WHERE event = 'user_signed_in' AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test' "
                 "AND timestamp >= '2026-09-18' AND timestamp < '2026-10-18'")
-meridian_active = scalar("SELECT uniq(person_id) FROM events WHERE event = 'user_signed_in' AND properties.environment = 'production' "
+meridian_active = scalar("SELECT uniq(person_id) FROM events WHERE event = 'user_signed_in' AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test' "
                          "AND person.properties.account_id = 'meridian' AND timestamp >= '2026-09-18' AND timestamp < '2026-10-18'")
 adoption = {s["label"]: s["aggregated_value"] for s in q("adoption")["results"]}
 check(f"no feature has more users than the {active} active in the window", max(adoption.values()) <= active, f"{adoption}")

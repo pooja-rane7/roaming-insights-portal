@@ -17,6 +17,8 @@ from pathlib import Path
 HOST = "https://us.posthog.com"
 DASHBOARD = "RoamLens · Customer health"
 PROD = {"key": "environment", "value": ["production"], "operator": "exact", "type": "event"}
+NOT_TEST = {"key": "traffic_source_type", "value": ["test"], "operator": "is_not", "type": "event"}  # our own QA runs
+BASE_FILTERS = [PROD, NOT_TEST]
 # The simulated data covers Jul 17 – Oct 17, 2026 (ending on a Saturday, so the last week is complete).
 # Fixed dates keep the dashboard meaningful later; relative ranges would drift past the data and go empty.
 # Each insight carries its own range: a dashboard-level date filter would override them all, silently
@@ -59,7 +61,7 @@ def viz(source):
 
 def trends(series, interval="week", breakdown=None, breakdown_type="event", display=None, date_range=None, formula=None, properties=None):
     q = {"kind": "TrendsQuery", "series": series, "interval": interval, "dateRange": date_range or PERIOD,
-         "properties": [PROD] + (properties or []), "filterTestAccounts": False}
+         "properties": BASE_FILTERS + (properties or []), "filterTestAccounts": False}
     if breakdown:
         q["breakdownFilter"] = {"breakdown": breakdown, "breakdown_type": breakdown_type}
     tf = {"showLegend": True}
@@ -87,7 +89,7 @@ SELECT
 FROM (
     SELECT properties.account_id AS account, person_id, timestamp, event
     FROM events
-    WHERE properties.environment = 'production'
+    WHERE properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
       AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 60 DAY
       AND properties.account_id IS NOT NULL
 )
@@ -107,7 +109,7 @@ WITH activity AS (
            countIf(timestamp < toDateTime('{AS_OF}') - INTERVAL 21 DAY) / 9 AS baseline_per_week
     FROM events
     WHERE event = 'user_signed_in'
-      AND properties.environment = 'production'
+      AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
       AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 84 DAY AND timestamp < toDateTime('{AS_OF}')
     GROUP BY account
 ),
@@ -115,7 +117,7 @@ breadth AS (
     SELECT person.properties.account_id AS account, uniqExact(event) AS features_used
     FROM events
     WHERE event IN ('partner_scorecard_opened', 'report_exported', 'map_marker_clicked', 'chart_view_toggled', 'alert_created')
-      AND properties.environment = 'production'
+      AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
       AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 30 DAY AND timestamp < toDateTime('{AS_OF}')
     GROUP BY account
 )
@@ -138,7 +140,7 @@ WITH active AS (
     SELECT DISTINCT person_id, toStartOfWeek(timestamp) AS week
     FROM events
     WHERE event = 'user_signed_in'
-      AND properties.environment = 'production'
+      AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
       AND timestamp >= '2026-07-19' AND timestamp < '2026-10-18'
 )
 SELECT c.week AS cohort_week,
@@ -161,7 +163,7 @@ CASE_SQL = {
     "Case study · Events without account_id, by version": """
 SELECT toDate(timestamp) AS day, properties.app_version AS version, count() AS events_without_account
 FROM events
-WHERE properties.environment = 'production'
+WHERE properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
   AND properties.account_id IS NULL
   AND timestamp >= '2026-09-15' AND timestamp < '2026-10-15'
 GROUP BY day, version
@@ -173,7 +175,7 @@ SELECT toStartOfWeek(timestamp) AS week,
        uniqIf(person_id, person.properties.account_id = 'corvalia') AS users_by_person_property
 FROM events
 WHERE event = 'user_signed_in'
-  AND properties.environment = 'production'
+  AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
   AND timestamp >= '2026-09-01'
 GROUP BY week
 ORDER BY week
@@ -184,7 +186,7 @@ SELECT toDate(timestamp) AS day,
        countIf(event = 'report_exported' AND properties.account_id = 'corvalia')       AS browser_exports_labeled,
        countIf(event = 'report_exported' AND person.properties.account_id = 'corvalia') AS browser_exports_all
 FROM events
-WHERE properties.environment = 'production'
+WHERE properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
   AND timestamp >= '2026-09-24' AND timestamp < '2026-10-15'
 GROUP BY day
 ORDER BY day
@@ -196,7 +198,7 @@ SELECT multiIf(timestamp < '2026-10-01', '1 before', timestamp < '2026-10-09', '
        round(100 * tagged / corvalia_events, 1) AS pct_tagged
 FROM events
 WHERE person.properties.account_id = 'corvalia'
-  AND properties.environment = 'production'
+  AND properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
   AND timestamp >= '2026-09-17' AND timestamp < '2026-10-15'
 GROUP BY period
 ORDER BY period
@@ -236,7 +238,7 @@ DASHBOARD_INSIGHTS = [
     (N["lifecycle"],
      'Each week: new, returning and resurrecting users above zero; users who went quiet (dormant) below. More dormant than returning means the account is slipping. Lakeshore renews Nov 30.',
      viz({"kind": "LifecycleQuery", "series": [events_node("user_signed_in")], "interval": "week", "dateRange": PERIOD,
-          "properties": [PROD, {"key": "account_id", "value": ["lakeshore"], "operator": "exact", "type": "event"}], "filterTestAccounts": False,
+          "properties": [*BASE_FILTERS, {"key": "account_id", "value": ["lakeshore"], "operator": "exact", "type": "event"}], "filterTestAccounts": False,
           "lifecycleFilter": {"showLegend": True}})),
     (N["corvalia"],
      'One account on its own, so an alert can watch it: notify when it drops more than 40% from the previous week.',
@@ -245,7 +247,7 @@ DASHBOARD_INSIGHTS = [
     (N["funnel"],
      'Of people signing in for the first time, how many open a partner scorecard and then export a report within 7 days.',
      viz({"kind": "FunnelsQuery", "series": [events_node("user_signed_in", "first_time_for_user"), events_node("partner_scorecard_opened"), events_node("report_exported")],
-          "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
+          "dateRange": PERIOD, "properties": BASE_FILTERS, "filterTestAccounts": False,
           "funnelsFilter": {"funnelWindowInterval": 7, "funnelWindowIntervalUnit": "day", "funnelVizType": "steps", "layout": "horizontal"}})),
     (N["retention"],
      'Rows: the week people were active. Columns: the % of them who signed in again 1–7 weeks later. Only weeks fully covered by the data are shown.',
@@ -253,7 +255,7 @@ DASHBOARD_INSIGHTS = [
     (N["stickiness"],
      'Share of users by how many of the last 30 days they signed in. People with a habit churn less than occasional visitors.',
      viz({"kind": "StickinessQuery", "series": [events_node("user_signed_in")], "interval": "day", "dateRange": LAST_30,
-          "properties": [PROD], "filterTestAccounts": False})),
+          "properties": BASE_FILTERS, "filterTestAccounts": False})),
     (N["adoption"],
      "Unique users per feature. Alerts is low because it's still a beta for Meridian only.",
      trends([events_node(e, "dau") for e in ["partner_scorecard_opened", "report_exported", "map_marker_clicked",
@@ -393,7 +395,7 @@ def main():
     native_retention = ("Weekly retention (native PostHog retention view)",
                         "Recurring weekly retention. With simulated data ending Oct 17, weeks after that show 0% (not observed, not churn). "
                         "The dashboard uses a SQL version limited to fully observed cohorts.",
-                        viz({"kind": "RetentionQuery", "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
+                        viz({"kind": "RetentionQuery", "dateRange": PERIOD, "properties": BASE_FILTERS, "filterTestAccounts": False,
                              "retentionFilter": {"period": "Week", "totalIntervals": 8, "retentionType": "retention_recurring",
                                                  "targetEntity": {"id": "user_signed_in", "name": "user_signed_in", "type": "events"},
                                                  "returningEntity": {"id": "user_signed_in", "name": "user_signed_in", "type": "events"}}}))
@@ -417,7 +419,7 @@ def main():
     dashboards = list_all(f"/api/projects/{pid}/dashboards/?limit=200")
     dash = find(dashboards, "name", DASHBOARD)
     dash_body = {"name": DASHBOARD, "description": "Account health, activation, retention and data quality for RoamLens (fictional, simulated data). Built from docs/dashboard-spec.md.",
-                 "filters": {"properties": [PROD]}, "pinned": True}
+                 "filters": {"properties": BASE_FILTERS}, "pinned": True}
     if dash:
         api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", dash_body)
         print(f"  = {DASHBOARD} (id {dash['id']})")

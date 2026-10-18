@@ -9,7 +9,9 @@ export interface ServerEvent {
 }
 
 /** Send one event and flush. Call inside `after()` so it never delays the response. */
-export async function captureServer<E extends keyof ServerEvent>(session: Session, event: E, properties: ServerEvent[E]): Promise<void> {
+export async function captureServer<E extends keyof ServerEvent>(
+  session: Session, event: E, properties: ServerEvent[E], trafficType: "real" | "test" = "real",
+): Promise<void> {
   const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
   if (!token) return;
   // Short-lived server work: send immediately instead of batching.
@@ -25,7 +27,7 @@ export async function captureServer<E extends keyof ServerEvent>(session: Sessio
         // Mirror the browser's super properties so server and client events filter the same way.
         app_version: packageJson.version,
         environment: process.env.NEXT_PUBLIC_APP_ENV ?? "development",
-        traffic_source_type: "real",
+        traffic_source_type: trafficType,
         account_id: session.accountId,
         account_name: account?.name,
         account_plan: account?.plan,
