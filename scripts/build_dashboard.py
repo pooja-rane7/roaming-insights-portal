@@ -94,6 +94,41 @@ GROUP BY account
 ORDER BY active_users_30d DESC
 """
 
+# Health score modeled on PostHog's own CS method (handbook: cs-and-onboarding/health-tracking):
+# 0.615 × engagement + 0.385 × breadth, engagement at full marks from 85% of the account's baseline.
+# One deliberate change: PostHog counts weekly active *people* and skips silent weeks, which the
+# handbook notes flatters intermittent usage. With 3–5 seat accounts, unique users barely move, so
+# engagement here is sign-in *frequency* (recent 21 days vs. the prior 63), silent weeks counted as zero.
+HEALTH_SCORE_SQL = """
+WITH activity AS (
+    SELECT person.properties.account_id AS account,
+           countIf(timestamp >= toDateTime('{AS_OF}') - INTERVAL 21 DAY) / 3 AS recent_per_week,
+           countIf(timestamp < toDateTime('{AS_OF}') - INTERVAL 21 DAY) / 9 AS baseline_per_week
+    FROM events
+    WHERE event = 'user_signed_in'
+      AND properties.environment = 'production'
+      AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 84 DAY AND timestamp < toDateTime('{AS_OF}')
+    GROUP BY account
+),
+breadth AS (
+    SELECT person.properties.account_id AS account, uniqExact(event) AS features_used
+    FROM events
+    WHERE event IN ('partner_scorecard_opened', 'report_exported', 'map_marker_clicked', 'chart_view_toggled', 'alert_created')
+      AND properties.environment = 'production'
+      AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 30 DAY AND timestamp < toDateTime('{AS_OF}')
+    GROUP BY account
+)
+SELECT a.account AS account,
+       round(a.recent_per_week, 1) AS sign_ins_per_week_recent,
+       round(a.baseline_per_week, 1) AS sign_ins_per_week_baseline,
+       round(least(1, (a.recent_per_week / a.baseline_per_week) / 0.85), 2) AS engagement_health,
+       b.features_used AS features_used_of_5,
+       round(10 * (0.615 * least(1, (a.recent_per_week / a.baseline_per_week) / 0.85) + 0.385 * b.features_used / 5), 1) AS health_score
+FROM activity AS a
+LEFT JOIN breadth AS b ON a.account = b.account
+ORDER BY health_score DESC
+"""
+
 CASE_SQL = {
     "Case study · Events without account_id, by version": """
 SELECT toDate(timestamp) AS day, properties.app_version AS version, count() AS events_without_account
@@ -176,6 +211,9 @@ DASHBOARD_INSIGHTS = [
      "Proactive CS · Unique Corvalia users per week. Attach an alert: notify when it drops more than 40%.",
      trends([events_node("user_signed_in", "dau")],
             properties=[{"key": "account_id", "value": ["corvalia"], "operator": "exact", "type": "event"}])),
+    ("12. Account health score (0–10)",
+     "Modeled on PostHog's CS health score (handbook): 0.615 × engagement (sign-in frequency vs. the account's own baseline) + 0.385 × feature breadth. As of Oct 14.",
+     sql(HEALTH_SCORE_SQL.replace("{AS_OF}", AS_OF))),
     ("9. Data quality: sign-ins carrying account_id (%)",
      "Prevention · Share of user_signed_in events with account_id set. Should be 100%; alert below 99%. Dipped on 0.3.0.",
      trends([events_node("user_signed_in", "total", properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}]),
@@ -195,6 +233,12 @@ ANNOTATIONS = [
     ("2026-10-01T12:00:00Z", "v0.3.0 · Login refactor (SSO path)"),
     ("2026-10-09T12:00:00Z", "v0.3.1 · Fix: register account properties on SSO sign-in"),
 ]
+
+
+ABOUT_MARKER = "**About this dashboard**"
+ABOUT_TEXT = ABOUT_MARKER + """ · RoamLens is a fictional B2B roaming-insights portal; its three customer accounts and all usage are **simulated** (Jul 17 – Oct 14, 2026).
+Stories to look for: **Meridian** healthy (Alerts beta from Sep 1) · **Lakeshore** real churn risk (renews Nov 30) · **Corvalia** an apparent drop that was a tracking bug in v0.3.0 (compare chart 1 with 1b).
+Code, tracking plan and case study: the `roaming-insights-portal` repo."""
 
 
 def behavioral(event, value, time_value, negation=False, **extra):
@@ -312,6 +356,15 @@ def main():
         else:
             current = api("POST", f"/api/projects/{pid}/insights/", body)
             print(f"  + {name}")
+
+    print("\nText card…")
+    d = api("GET", f"/api/projects/{pid}/dashboards/{dash['id']}/")
+    current_text = next((t for t in d.get("tiles", []) if (t.get("text") or {}).get("body", "").startswith(ABOUT_MARKER) and not t.get("deleted")), None)
+    tile = {"text": {"body": ABOUT_TEXT}, "layouts": {"sm": {"x": 0, "y": 0, "w": 12, "h": 3}}}
+    if current_text:
+        tile["id"] = current_text["id"]
+    api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", {"tiles": [tile]})
+    print("  = About this dashboard" if current_text else "  + About this dashboard")
 
     print("\nCohorts…")
     cohorts = list_all(f"/api/projects/{pid}/cohorts/?limit=200")
