@@ -1,6 +1,6 @@
 # RoamLens — a roaming-insights portal, instrumented with PostHog
 
-A portfolio project for a **Technical Customer Success** role. I built a small B2B product, instrumented
+I built a small B2B product, instrumented
 it with PostHog the way I'd advise a customer to, and then supported it as if it were my customer:
 account-health dashboards, a feature-flag rollout, error tracking, and a real data-quality investigation.
 
