@@ -32,7 +32,7 @@ Registered once and attached to every event.
 |---|---|---|
 | `app_version` | `0.3.1` | Correlate data changes with releases (key for the case study) |
 | `environment` | `development` / `production` | Keep local testing out of real analysis |
-| `traffic_source_type` | `real` / `simulated` | **Never mix simulated usage with real visitors** |
+| `traffic_source_type` | `real` / `simulated` / `test` | **Never mix simulated usage or our own QA with real visitors.** QA browsers set `localStorage.roamlens_traffic = "test"`. |
 
 ## 4. Identity and groups
 

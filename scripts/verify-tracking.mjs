@@ -4,7 +4,7 @@
 //   node scripts/verify-tracking.mjs [base_url] [--error] [--account meridian|corvalia|lakeshore]
 //   --error also throws a labeled test error in the page to check exception autocapture.
 //
-// Note: this sends real events to the configured PostHog project, tagged environment=development.
+// Note: this sends events to the configured PostHog project, tagged traffic_source_type=test.
 // posthog-js drops events from headless browsers by default, so the script overrides the user agent.
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -99,10 +99,15 @@ try {
   const { userAgent } = await send("Browser.getVersion");
   await send("Emulation.setUserAgentOverride", { userAgent: userAgent.replace("HeadlessChrome", "Chrome") });
 
+  // Tag this browser as QA traffic before the app loads, so these events never count as real usage.
   let load = nextLoad();
   await send("Page.navigate", { url: `${BASE}/` });
+  await load;
+  await run(`localStorage.setItem("roamlens_traffic", "test")`);
+  load = nextLoad();
+  await send("Page.reload");
   await load; await sleep(1500);
-  console.log("✓ open sign-in page");
+  console.log("✓ open sign-in page (tagged as test traffic)");
 
   load = nextLoad();
   await click(`choose account: ${ACCOUNT}`, `document.querySelector('input[name=account][value="${ACCOUNT}"]')`);

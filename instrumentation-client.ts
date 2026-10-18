@@ -13,10 +13,17 @@ if (token) {
     person_profiles: "identified_only",
   });
 
-  // Super properties: attached to every event from this browser.
+  // Super properties: attached to every event from this browser. QA browsers set
+  // localStorage.roamlens_traffic = "test" so our own checks never count as real usage.
+  let trafficType = "real";
+  try {
+    if (localStorage.getItem("roamlens_traffic") === "test") trafficType = "test";
+  } catch {
+    // storage unavailable (privacy mode); treat as real
+  }
   posthog.register({
     app_version: process.env.NEXT_PUBLIC_APP_VERSION,
     environment: process.env.NEXT_PUBLIC_APP_ENV ?? "development",
-    traffic_source_type: "real",
+    traffic_source_type: trafficType,
   });
 }
