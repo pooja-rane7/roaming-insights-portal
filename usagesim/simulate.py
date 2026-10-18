@@ -90,6 +90,9 @@ class Simulator:
             "app_version": version_on(d), "environment": "production", "traffic_source_type": "simulated",
             "$feature/alerts-beta": u["account"] == S.ALERTS_BETA["account"] and d >= S.ALERTS_BETA["from"],
             "$groups": {"company": u["account"]},
+            # Don't geolocate: every event is sent from one machine, so PostHog would place all
+            # simulated users at the sender's location. (Events already sent can't be changed.)
+            "$geoip_disable": True,
         }
         if has_account:
             props.update(account_id=u["account"], account_name=a["name"], account_plan=a["plan"])
