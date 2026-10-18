@@ -138,3 +138,7 @@ The incident is visible in the git history: `Release 0.3.0: login refactor` intr
 `Release 0.3.1: register account properties for SSO sign-ins` fixes it with regression tests.
 
 Built with Claude Code as a pair programmer.
+
+## License
+
+[MIT](LICENSE). The data, companies and people in this project are fictional.
