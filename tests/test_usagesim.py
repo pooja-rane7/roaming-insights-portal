@@ -118,3 +118,18 @@ def test_most_new_users_activate_within_a_week(events):
     activated = [u for u, j in new_users.items() if first_export[u] and (datetime.fromisoformat(first_export[u]).date() - j).days < 7]
     assert len(new_users) >= 5
     assert 0.3 <= len(activated) / len(new_users) <= 1.0
+
+
+def test_extension_is_separate_and_consistent(events):
+    from usagesim.simulate import all_events
+    combined = all_events()
+    main_ids = [e["uuid"] for e in events]
+    assert [e["uuid"] for e in combined[:len(events)]] == main_ids        # main period unchanged
+    ext = combined[len(events):]
+    assert 50 < len(ext) < 1_000
+    assert len({e["uuid"] for e in combined}) == len(combined)             # no id collisions
+    assert all("2026-10-15" <= day(e) <= S.EXTENSION_END.isoformat() for e in ext)
+    assert all(e["properties"]["app_version"] == "0.3.1" for e in ext)
+    assert all("account_id" in e["properties"] for e in ext)               # bug is fixed by then
+    assert not any(e["event"] == "$identify" for e in ext)                 # everyone already identified
+    assert not any(e["properties"]["distinct_id"] == "sim_lakeshore_analyst_29" for e in ext)  # dropout stays gone

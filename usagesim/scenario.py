@@ -12,6 +12,10 @@ from datetime import date
 SEED = 4242
 START = date(2026, 7, 17)
 END = date(2026, 10, 14)          # inclusive; matches the roaming dataset's last day
+# Top-up so the last calendar week (Sun Oct 11 – Sat Oct 17) is complete on weekly charts.
+# Generated with its own random stream, so the main period's events (already sent) are unchanged.
+EXTENSION_END = date(2026, 10, 17)
+EXTENSION_SEED = SEED + 1
 HOST = "https://roamlens.example"
 
 ACCOUNTS = {

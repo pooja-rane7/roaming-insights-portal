@@ -215,6 +215,27 @@ class Simulator:
         self.events.sort(key=lambda e: e["timestamp"])
         return self.events
 
+    def extension(self):
+        """Events for the days after END through EXTENSION_END, from a separate random stream."""
+        main, self.events = self.events, []   # collect into a fresh list; never touch the main period's list
+        self.rng = random.Random(S.EXTENSION_SEED)
+        for u in self.users:
+            for d in daterange(S.END + timedelta(days=1), S.EXTENSION_END):
+                if u["dropout"] and d.isoformat() >= u["dropout"]:
+                    break
+                lam = self._rate(u, d)
+                for _ in range(sum(1 for _ in range(3) if self.rng.random() < lam / 3)):
+                    self._session(u, d, first=False)
+        ext = sorted(self.events, key=lambda e: e["timestamp"])
+        self.events = main
+        return ext
+
+
+def all_events():
+    sim = Simulator()
+    main = sim.run()
+    return main + sim.extension()
+
 
 # ---------------------------------------------------------------------- output / sending
 
@@ -222,7 +243,7 @@ def summarize(events):
     by_event = Counter(e["event"] for e in events)
     by_account = Counter(e["properties"].get("account_id", "(missing)") for e in events)
     users = len({e["properties"]["distinct_id"] for e in events})
-    print(f"Simulated period : {S.START} → {S.END}")
+    print(f"Simulated period : {S.START} → {S.EXTENSION_END} (main period to {S.END}, top-up after)")
     print(f"Users            : {users}")
     print(f"Total events     : {len(events):,}  (hard cap {MAX_EVENTS:,})")
     print("By event         : " + ", ".join(f"{k} {v:,}" for k, v in by_event.most_common()))
@@ -265,7 +286,7 @@ def main():
     ap.add_argument("--send", action="store_true", help="send to PostHog (default: dry run)")
     ap.add_argument("--limit", type=int, help="send at most this many unsent events (pilot)")
     args = ap.parse_args()
-    events = Simulator().run()
+    events = all_events()
     if len(events) > MAX_EVENTS:
         raise SystemExit(f"{len(events):,} events exceeds the safety cap of {MAX_EVENTS:,}; not sending.")
     summarize(events)
