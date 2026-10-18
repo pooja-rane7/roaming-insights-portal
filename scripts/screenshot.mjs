@@ -2,6 +2,7 @@
 // Signs in with a demo session cookie so portal pages render.
 //
 //   node scripts/screenshot.mjs <url> <out.png> [--theme light|dark] [--width 1440] [--account meridian] [--role analyst]
+//                                [--no-session] [--wait 3000]   (--no-session: for third-party pages, e.g. a shared PostHog dashboard)
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +15,8 @@ if (!url || !out) {
 }
 const opt = (name, fallback) => (rest.includes(`--${name}`) ? rest[rest.indexOf(`--${name}`) + 1] : fallback);
 const theme = opt("theme", "light");
+const noSession = rest.includes("--no-session");
+const waitMs = Number(opt("wait", "3000"));
 const width = Number(opt("width", "1440"));
 const session = Buffer.from(JSON.stringify({
   userId: `${opt("account", "meridian")}_${opt("role", "analyst")}_shot01`, accountId: opt("account", "meridian"), role: opt("role", "analyst"),
@@ -52,12 +55,12 @@ try {
 
   await send("Page.enable");
   await send("Network.enable");
-  await send("Network.setCookie", { name: "rl_session", value: session, url });
+  if (!noSession) await send("Network.setCookie", { name: "rl_session", value: session, url });
   await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
   await send("Page.navigate", { url });
   await loaded;
-  await sleep(3000); // map tiles and client components
+  await sleep(waitMs); // map tiles, client components, remote charts
   const { cssContentSize } = await send("Page.getLayoutMetrics");
   await send("Emulation.setDeviceMetricsOverride", { width, height: Math.ceil(cssContentSize.height), deviceScaleFactor: 1, mobile: false });
   await sleep(800);

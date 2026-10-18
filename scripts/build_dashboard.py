@@ -62,13 +62,12 @@ def trends(series, interval="week", breakdown=None, breakdown_type="event", disp
          "properties": [PROD] + (properties or []), "filterTestAccounts": False}
     if breakdown:
         q["breakdownFilter"] = {"breakdown": breakdown, "breakdown_type": breakdown_type}
-    tf = {}
+    tf = {"showLegend": True}
     if display:
         tf["display"] = display
     if formula:
         tf["formula"] = formula
-    if tf:
-        q["trendsFilter"] = tf
+    q["trendsFilter"] = tf
     return viz(q)
 
 
@@ -121,10 +120,10 @@ breadth AS (
     GROUP BY account
 )
 SELECT a.account AS account,
-       round(a.recent_per_week, 1) AS sign_ins_per_week_recent,
-       round(a.baseline_per_week, 1) AS sign_ins_per_week_baseline,
-       round(least(1, (a.recent_per_week / a.baseline_per_week) / 0.85), 2) AS engagement_health,
-       b.features_used AS features_used_of_5,
+       round(a.recent_per_week, 1) AS recent_per_wk,
+       round(a.baseline_per_week, 1) AS baseline_per_wk,
+       round(least(1, (a.recent_per_week / a.baseline_per_week) / 0.85), 2) AS engagement,
+       b.features_used AS features_of_5,
        round(10 * (0.615 * least(1, (a.recent_per_week / a.baseline_per_week) / 0.85) + 0.385 * b.features_used / 5), 1) AS health_score
 FROM activity AS a
 LEFT JOIN breadth AS b ON a.account = b.account
@@ -217,7 +216,7 @@ DASHBOARD_INSIGHTS = [
      "Q1 · First-ever sign-in → open a partner → export, within 7 days.",
      viz({"kind": "FunnelsQuery", "series": [events_node("user_signed_in", "first_time_for_user"), events_node("partner_scorecard_opened"), events_node("report_exported")],
           "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
-          "funnelsFilter": {"funnelWindowInterval": 7, "funnelWindowIntervalUnit": "day", "funnelVizType": "steps"}})),
+          "funnelsFilter": {"funnelWindowInterval": 7, "funnelWindowIntervalUnit": "day", "funnelVizType": "steps", "layout": "horizontal"}})),
     ("3. Weekly retention (fully observed cohorts)",
      "Q2 · % of each week's active users who sign in again 1–7 weeks later. Only cohorts whose 8 weeks fall inside the data.",
      sql(RETENTION_SQL)),
@@ -230,9 +229,9 @@ DASHBOARD_INSIGHTS = [
      "Q6 · report_exported (browser) as a % of report_generated (server). The gap is client-side event loss.",
      trends([events_node("report_exported"), events_node("report_generated")], interval="week", formula="100 * A / B")),
     ("6. Alerts beta engagement",
-     "Q4 · Average sign-ins per user per week, by account. Meridian got the beta on Sep 1. Correlation, not proof.",
+     "Q4 · Average sign-ins per user per week: Meridian (Alerts beta from Sep 1) vs. Corvalia (no beta). Lakeshore is too small to compare. Correlation, not proof.",
      trends([events_node("user_signed_in", "avg_count_per_actor")], breakdown="account_id",
-            properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}])),
+            properties=[{"key": "account_id", "value": ["meridian", "corvalia"], "operator": "exact", "type": "event"}])),
     ("7. Account health",
      "Q3 · As of Oct 17: seats, active users (30 days vs. the 30 before), utilization, exports and last activity per account.",
      sql(HEALTH_SQL.replace("{AS_OF}", AS_OF))),
@@ -248,13 +247,14 @@ DASHBOARD_INSIGHTS = [
      trends([events_node("user_signed_in", "total", properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}]),
              events_node("user_signed_in")], interval="week", formula="100 * A / B")),
     ("10. Stickiness (last 30 days)",
-     "Engagement · How many days out of the last 30 each user signed in, by account.",
+     "Engagement · Share of users by how many of the last 30 days they signed in. Habit beats headcount.",
      viz({"kind": "StickinessQuery", "series": [events_node("user_signed_in")], "interval": "day", "dateRange": LAST_30,
           "properties": [PROD], "filterTestAccounts": False})),
     ("11. Lakeshore lifecycle",
      "Churn risk · New, returning, resurrecting and dormant Lakeshore users per week.",
      viz({"kind": "LifecycleQuery", "series": [events_node("user_signed_in")], "interval": "week", "dateRange": PERIOD,
-          "properties": [PROD, {"key": "account_id", "value": ["lakeshore"], "operator": "exact", "type": "event"}], "filterTestAccounts": False})),
+          "properties": [PROD, {"key": "account_id", "value": ["lakeshore"], "operator": "exact", "type": "event"}], "filterTestAccounts": False,
+          "lifecycleFilter": {"showLegend": True}})),
 ]
 
 OBSOLETE_INSIGHTS = ["3. Weekly retention", "1b. Weekly active users by account (person property)"]
@@ -266,6 +266,21 @@ ANNOTATIONS = [
 ]
 
 
+SECTIONS = {
+    "health": "### 1 · Are our customer accounts healthy?",
+    "value": "### 2 · Do users get value, and keep coming back?",
+    "changes": "### 3 · Did our product changes work?",
+    "trust": "### 4 · Can we trust the data?",
+}
+# Story order. Each row: (tile key, width) pairs on a 12-column grid; keys are insight-name prefixes,
+# "about" or a section key.
+LAYOUT = [
+    [("about", 12, 2)],
+    [("health", 12, 1)], [("1. ", 6, 5), ("1b.", 6, 5)], [("12.", 6, 4), ("7. ", 6, 4)], [("11.", 6, 5), ("8. ", 6, 5)],
+    [("value", 12, 1)], [("2. ", 6, 5), ("3. ", 6, 5)], [("10.", 6, 5), ("4. ", 6, 5)],
+    [("changes", 12, 1)], [("6. ", 12, 5)],
+    [("trust", 12, 1)], [("5. ", 6, 5), ("9. ", 6, 5)],
+]
 ABOUT_MARKER = "**About this dashboard**"
 ABOUT_TEXT = ABOUT_MARKER + """ · RoamLens is a fictional B2B roaming-insights portal; its three customer accounts and all usage are **simulated** (Jul 17 – Oct 17, 2026).
 Stories to look for: **Meridian** healthy (Alerts beta from Sep 1) · **Lakeshore** real churn risk (renews Nov 30) · **Corvalia** an apparent drop that was a tracking bug in v0.3.0 (compare chart 1 with 1b).
@@ -401,14 +416,39 @@ def main():
             api("PATCH", f"/api/projects/{pid}/insights/{old['id']}/", {"deleted": True})
             print(f"  - {name} (replaced)")
 
-    print("\nText card…")
+    print("\nText cards and layout…")
     d = api("GET", f"/api/projects/{pid}/dashboards/{dash['id']}/")
-    current_text = next((t for t in d.get("tiles", []) if (t.get("text") or {}).get("body", "").startswith(ABOUT_MARKER) and not t.get("deleted")), None)
-    tile = {"text": {"body": ABOUT_TEXT}, "layouts": {"sm": {"x": 0, "y": 0, "w": 12, "h": 3}}}
-    if current_text:
-        tile["id"] = current_text["id"]
-    api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", {"tiles": [tile]})
-    print("  = About this dashboard" if current_text else "  + About this dashboard")
+    live = [t for t in d.get("tiles", []) if not t.get("deleted")]
+    bodies = {"about": ABOUT_TEXT, **SECTIONS}
+    new_texts = []
+    for key, body in bodies.items():
+        head = body.split("\n")[0][:30]
+        if not any((t.get("text") or {}).get("body", "").startswith(head) for t in live):
+            new_texts.append({"text": {"body": body}})
+    if new_texts:
+        api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", {"tiles": new_texts})
+        print(f"  + {len(new_texts)} text card(s)")
+        live = [t for t in api("GET", f"/api/projects/{pid}/dashboards/{dash['id']}/").get("tiles", []) if not t.get("deleted")]
+
+    def tile_for(key):
+        if key in bodies:
+            head = bodies[key].split("\n")[0][:30]
+            return next(t for t in live if (t.get("text") or {}).get("body", "").startswith(head))
+        return next(t for t in live if t.get("insight") and t["insight"]["name"].startswith(key))
+
+    updates, y = [], 0
+    for row in LAYOUT:
+        x = 0
+        for key, w, h in row:
+            t = tile_for(key)
+            body = {"id": t["id"], "layouts": {"sm": {"x": x, "y": y, "w": w, "h": h}, "xs": {"x": 0, "y": y, "w": 1, "h": h}}}
+            if key in bodies:
+                body["text"] = {"body": bodies[key]}
+            updates.append(body)
+            x += w
+        y += max(h for _, _, h in row)
+    api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", {"tiles": updates})
+    print(f"  = {len(updates)} tiles arranged in story order")
 
     print("\nCohorts…")
     cohorts = list_all(f"/api/projects/{pid}/cohorts/?limit=200")

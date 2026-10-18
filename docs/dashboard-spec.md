@@ -86,7 +86,8 @@ Data management → Annotations (or click a date on any chart). Scope: project.
 ### 6. Alerts beta engagement — *Q4: do accounts with the beta engage more?*
 - **Type:** Trends, interval week
 - **Series:** `user_signed_in`, aggregated as **Average per user** (wording may be "count per user → average")
-- **Breakdown:** `account_id`, with a filter `account_id` **is set** (otherwise the 0.3.0 bug's unlabeled events add a noisy `(none)` line)
+- **Breakdown:** `account_id`, **filtered to Meridian and Corvalia**: the beta account vs. a comparable account without it.
+  Lakeshore is left out because with 1–3 users, weeks with nobody active would show an "average per user" of 0.
 - **What to look for:** Meridian's sign-ins per user step up after the Sep 1 annotation (about 2.97 → 3.38 per week).
 - **Caveat to say out loud:** this isn't a randomized experiment (one account got the beta), so it's
   correlation, not proof. Too few users for a real A/B test.
@@ -153,6 +154,13 @@ ORDER BY active_users_30d DESC
 ### Text card: About this dashboard
 A note at the top explaining that the data is simulated and which stories to look for, so anyone opening the public
 link understands it in seconds.
+
+## Layout and presentation
+
+- **Story order**, with section headings as text cards: *1 · Are our customer accounts healthy?* (1, 1b, 12, 7, 11, 8),
+  *2 · Do users get value?* (2, 3, 10, 4), *3 · Did our product changes work?* (6), *4 · Can we trust the data?* (5, 9).
+- **Legends on every chart**, so the public view is readable without hovering.
+- **Funnel in horizontal layout**, so all three steps fit in a half-width tile.
 
 ## Technical audit
 
