@@ -17,11 +17,13 @@ from pathlib import Path
 HOST = "https://us.posthog.com"
 DASHBOARD = "RoamLens · Customer health"
 PROD = {"key": "environment", "value": ["production"], "operator": "exact", "type": "event"}
-# The simulated data covers Jul 17 – Oct 14, 2026. Fixed dates keep the dashboard meaningful later;
-# relative ranges ("last 90 days") would drift past the data and go empty.
-PERIOD = {"date_from": "2026-07-17", "date_to": "2026-10-14"}
-LAST_30 = {"date_from": "2026-09-15", "date_to": "2026-10-14"}
-AS_OF = "2026-10-15"
+# The simulated data covers Jul 17 – Oct 17, 2026 (ending on a Saturday, so the last week is complete).
+# Fixed dates keep the dashboard meaningful later; relative ranges would drift past the data and go empty.
+# Each insight carries its own range: a dashboard-level date filter would override them all, silently
+# turning "last 30 days" charts into full-period charts.
+PERIOD = {"date_from": "2026-07-17", "date_to": "2026-10-17"}
+LAST_30 = {"date_from": "2026-09-18", "date_to": "2026-10-17"}
+AS_OF = "2026-10-18"
 
 
 def env(name):
@@ -129,6 +131,33 @@ LEFT JOIN breadth AS b ON a.account = b.account
 ORDER BY health_score DESC
 """
 
+# Weekly retention as a SQL matrix, limited to cohorts whose 8 weeks all fall inside the data
+# (cohorts Jul 19 – Aug 23; week 7 of the last cohort ends Oct 17). PostHog's native retention
+# insight counts weeks after the data ends as 0%, which with frozen simulated data reads as churn.
+RETENTION_SQL = """
+WITH active AS (
+    SELECT DISTINCT person_id, toStartOfWeek(timestamp) AS week
+    FROM events
+    WHERE event = 'user_signed_in'
+      AND properties.environment = 'production'
+      AND timestamp >= '2026-07-19' AND timestamp < '2026-10-18'
+)
+SELECT c.week AS cohort_week,
+       uniq(c.person_id) AS users,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 1) / users, 1) AS week_1_pct,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 2) / users, 1) AS week_2_pct,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 3) / users, 1) AS week_3_pct,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 4) / users, 1) AS week_4_pct,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 5) / users, 1) AS week_5_pct,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 6) / users, 1) AS week_6_pct,
+       round(100 * uniqIf(r.person_id, dateDiff('week', c.week, r.week) = 7) / users, 1) AS week_7_pct
+FROM active AS c
+LEFT JOIN active AS r ON c.person_id = r.person_id
+WHERE c.week <= toDate('2026-08-23')
+GROUP BY cohort_week
+ORDER BY cohort_week
+"""
+
 CASE_SQL = {
     "Case study · Events without account_id, by version": """
 SELECT toDate(timestamp) AS day, properties.app_version AS version, count() AS events_without_account
@@ -179,20 +208,19 @@ DASHBOARD_INSIGHTS = [
     ("1. Weekly active users by account",
      "Q3 · Unique users signing in per week, by account (event property). Watch for Corvalia's October dip and the (none) series.",
      trends([events_node("user_signed_in", "dau")], breakdown="account_id")),
-    ("1b. Weekly active users by account (person property)",
-     "Bug-proof version of chart 1: breaks down by the person property, which the 0.3.0 release didn't affect.",
-     trends([events_node("user_signed_in", "dau")], breakdown="account_id", breakdown_type="person")),
+    ("1b. Weekly active users by account (bug-proof)",
+     "Chart 1 made robust: account = event property, falling back to the person property. Covers the 0.3.0 bug "
+     "(event property missing) and first sign-ins ingested before the person's properties were set.",
+     trends([events_node("user_signed_in", "dau")], breakdown="coalesce(properties.account_id, person.properties.account_id)",
+            breakdown_type="hogql")),
     ("2. Activation funnel",
      "Q1 · First-ever sign-in → open a partner → export, within 7 days.",
      viz({"kind": "FunnelsQuery", "series": [events_node("user_signed_in", "first_time_for_user"), events_node("partner_scorecard_opened"), events_node("report_exported")],
           "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
           "funnelsFilter": {"funnelWindowInterval": 7, "funnelWindowIntervalUnit": "day", "funnelVizType": "steps"}})),
-    ("3. Weekly retention",
-     "Q2 · Of users who signed in in a given week, how many sign in again in each later week (recurring retention).",
-     viz({"kind": "RetentionQuery", "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
-          "retentionFilter": {"period": "Week", "totalIntervals": 8, "retentionType": "retention_recurring",
-                              "targetEntity": {"id": "user_signed_in", "name": "user_signed_in", "type": "events"},
-                              "returningEntity": {"id": "user_signed_in", "name": "user_signed_in", "type": "events"}}})),
+    ("3. Weekly retention (fully observed cohorts)",
+     "Q2 · % of each week's active users who sign in again 1–7 weeks later. Only cohorts whose 8 weeks fall inside the data.",
+     sql(RETENTION_SQL)),
     ("4. Feature adoption (last 30 days)",
      "Q2 · Unique users per feature in the last 30 days.",
      trends([events_node(e, "dau") for e in ["partner_scorecard_opened", "report_exported", "map_marker_clicked",
@@ -203,21 +231,22 @@ DASHBOARD_INSIGHTS = [
      trends([events_node("report_exported"), events_node("report_generated")], interval="week", formula="100 * A / B")),
     ("6. Alerts beta engagement",
      "Q4 · Average sign-ins per user per week, by account. Meridian got the beta on Sep 1. Correlation, not proof.",
-     trends([events_node("user_signed_in", "avg_count_per_actor")], breakdown="account_id")),
+     trends([events_node("user_signed_in", "avg_count_per_actor")], breakdown="account_id",
+            properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}])),
     ("7. Account health",
-     "Q3 · As of Oct 14: seats, active users (30 days vs. the 30 before), utilization, exports and last activity per account.",
+     "Q3 · As of Oct 17: seats, active users (30 days vs. the 30 before), utilization, exports and last activity per account.",
      sql(HEALTH_SQL.replace("{AS_OF}", AS_OF))),
     ("8. Corvalia weekly active users",
      "Proactive CS · Unique Corvalia users per week. Attach an alert: notify when it drops more than 40%.",
      trends([events_node("user_signed_in", "dau")],
             properties=[{"key": "account_id", "value": ["corvalia"], "operator": "exact", "type": "event"}])),
     ("12. Account health score (0–10)",
-     "Modeled on PostHog's CS health score (handbook): 0.615 × engagement (sign-in frequency vs. the account's own baseline) + 0.385 × feature breadth. As of Oct 14.",
+     "Modeled on PostHog's CS health score (handbook): 0.615 × engagement (sign-in frequency vs. the account's own baseline) + 0.385 × feature breadth. As of Oct 17.",
      sql(HEALTH_SCORE_SQL.replace("{AS_OF}", AS_OF))),
     ("9. Data quality: sign-ins carrying account_id (%)",
-     "Prevention · Share of user_signed_in events with account_id set. Should be 100%; alert below 99%. Dipped on 0.3.0.",
+     "Prevention · Weekly share of user_signed_in events with account_id set. Should be 100%; alert below 99%. Dipped on 0.3.0.",
      trends([events_node("user_signed_in", "total", properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}]),
-             events_node("user_signed_in")], interval="day", formula="100 * A / B")),
+             events_node("user_signed_in")], interval="week", formula="100 * A / B")),
     ("10. Stickiness (last 30 days)",
      "Engagement · How many days out of the last 30 each user signed in, by account.",
      viz({"kind": "StickinessQuery", "series": [events_node("user_signed_in")], "interval": "day", "dateRange": LAST_30,
@@ -228,6 +257,8 @@ DASHBOARD_INSIGHTS = [
           "properties": [PROD, {"key": "account_id", "value": ["lakeshore"], "operator": "exact", "type": "event"}], "filterTestAccounts": False})),
 ]
 
+OBSOLETE_INSIGHTS = ["3. Weekly retention", "1b. Weekly active users by account (person property)"]
+
 ANNOTATIONS = [
     ("2026-09-01T12:00:00Z", "v0.2.0 · Alerts beta rolled out to Meridian Mobile (flag alerts-beta)"),
     ("2026-10-01T12:00:00Z", "v0.3.0 · Login refactor (SSO path)"),
@@ -236,7 +267,7 @@ ANNOTATIONS = [
 
 
 ABOUT_MARKER = "**About this dashboard**"
-ABOUT_TEXT = ABOUT_MARKER + """ · RoamLens is a fictional B2B roaming-insights portal; its three customer accounts and all usage are **simulated** (Jul 17 – Oct 14, 2026).
+ABOUT_TEXT = ABOUT_MARKER + """ · RoamLens is a fictional B2B roaming-insights portal; its three customer accounts and all usage are **simulated** (Jul 17 – Oct 17, 2026).
 Stories to look for: **Meridian** healthy (Alerts beta from Sep 1) · **Lakeshore** real churn risk (renews Nov 30) · **Corvalia** an apparent drop that was a tracking bug in v0.3.0 (compare chart 1 with 1b).
 Code, tracking plan and case study: the `roaming-insights-portal` repo."""
 
@@ -314,7 +345,14 @@ def main():
     pid = project["id"]
     print(f"Project: {project['name']} (id {pid})\n")
 
-    every = DASHBOARD_INSIGHTS + [(n, "Case study query (docs/case-study.md).", sql(q)) for n, q in CASE_SQL.items()]
+    native_retention = ("Weekly retention (native PostHog retention view)",
+                        "Recurring weekly retention. With simulated data ending Oct 17, weeks after that show 0% (not observed, not churn). "
+                        "The dashboard uses a SQL version limited to fully observed cohorts.",
+                        viz({"kind": "RetentionQuery", "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
+                             "retentionFilter": {"period": "Week", "totalIntervals": 8, "retentionType": "retention_recurring",
+                                                 "targetEntity": {"id": "user_signed_in", "name": "user_signed_in", "type": "events"},
+                                                 "returningEntity": {"id": "user_signed_in", "name": "user_signed_in", "type": "events"}}}))
+    every = DASHBOARD_INSIGHTS + [native_retention] + [(n, "Case study query (docs/case-study.md).", sql(q)) for n, q in CASE_SQL.items()]
     print("Checking queries with PostHog…")
     for name, _, query in every:
         print(f"  ✓ {name}: {describe(name, run_query(pid, query))}")
@@ -334,7 +372,7 @@ def main():
     dashboards = list_all(f"/api/projects/{pid}/dashboards/?limit=200")
     dash = find(dashboards, "name", DASHBOARD)
     dash_body = {"name": DASHBOARD, "description": "Account health, activation, retention and data quality for RoamLens (fictional, simulated data). Built from docs/dashboard-spec.md.",
-                 "filters": {**PERIOD, "properties": [PROD]}, "pinned": True}
+                 "filters": {"properties": [PROD]}, "pinned": True}
     if dash:
         api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", dash_body)
         print(f"  = {DASHBOARD} (id {dash['id']})")
@@ -356,6 +394,12 @@ def main():
         else:
             current = api("POST", f"/api/projects/{pid}/insights/", body)
             print(f"  + {name}")
+
+    for name in OBSOLETE_INSIGHTS:   # renamed or replaced in earlier versions of this script
+        old = find(insights, "name", name)
+        if old:
+            api("PATCH", f"/api/projects/{pid}/insights/{old['id']}/", {"deleted": True})
+            print(f"  - {name} (replaced)")
 
     print("\nText card…")
     d = api("GET", f"/api/projects/{pid}/dashboards/{dash['id']}/")

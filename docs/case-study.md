@@ -146,8 +146,8 @@ Or break down by the person property `account_id` in the UI for that period.
 > exports kept arriving every day.
 >
 > **Status:** your team's fix shipped in 0.3.1 on Oct 9, and Corvalia's events are labeled again.
-> For Oct 1–8, use the person property `account_id` (I've added a corrected version of the chart to your
-> dashboard) so the history reads correctly.
+> For Oct 1–8, count accounts with `coalesce(account_id, person account_id)` (I've added a corrected version of
+> the chart to your dashboard) so the history reads correctly.
 >
 > **To catch this earlier next time,** I'd suggest:
 > 1. An insight alert on "% of events with `account_id`" that fires below 99%.

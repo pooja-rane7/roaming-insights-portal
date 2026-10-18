@@ -16,8 +16,10 @@ monthly event allowance). Insight alerts may be limited on the free plan; check 
 2. **Dashboard:** Dashboards → New dashboard → blank → name it **RoamLens · Customer health**.
 3. **Dashboard filters** (apply to every chart):
    - Property filter: `environment` = `production`. This hides the development test events.
-   - Date range: **fixed, Jul 17 – Oct 14, 2026**, the span of the simulated data. Relative ranges
-     ("last 90 days") would drift past the data and empty the charts over time.
+   - **No dashboard-level date range.** A dashboard date filter overrides every chart's own range, silently
+     turning "last 30 days" charts into full-period ones. Each chart sets its own **fixed** range instead:
+     Jul 17 – Oct 17, 2026 (the simulated data, ending on a Saturday so the last week is complete), or
+     Sep 18 – Oct 17 for "last 30 days" charts. Relative ranges would drift past the data and go empty.
    - Leave `traffic_source_type` unfiltered. Real visitors (once deployed) and simulated users both count.
      Add a breakdown or filter on it whenever you need to separate them.
 
@@ -41,10 +43,12 @@ Data management → Annotations (or click a date on any chart). Scope: project.
 - **What to look for:** Meridian steady or rising; Lakeshore sliding down (real churn risk);
   Corvalia dropping in early October, plus a new `(none)` series appearing at the same time. That is the case-study clue.
 
-### 1b. Weekly active users by account (person property) — *the bug-proof version*
-- Same as chart 1, but **breakdown by person property** `account_id`.
-- The 0.3.0 bug only stripped the *event* property, so this chart stays accurate. It's the "corrected chart"
-  promised in the case-study reply.
+### 1b. Weekly active users by account (bug-proof)
+- Same as chart 1, but the breakdown is a SQL expression: `coalesce(properties.account_id, person.properties.account_id)`.
+- **Why both:** the 0.3.0 bug stripped the *event* property (the person property survived). Separately, 4 users'
+  very first sign-ins were ingested before their `$identify` had set person properties. PostHog stores person
+  properties on each event as of ingestion, so those events have an empty person snapshot. Each source covers the
+  other's gap. It's the "corrected chart" promised in the case-study reply.
 
 ### 2. Activation funnel — *Q1: do new users reach value?*
 - **Type:** Funnel
@@ -53,7 +57,13 @@ Data management → Annotations (or click a date on any chart). Scope: project.
 - **Optional breakdown:** `account_plan`
 - **Talking point:** where do users drop off, and what would you suggest (e.g., an export button on the partner page)?
 
-### 3. Weekly retention — *Q2: do users keep coming back?*
+### 3. Weekly retention (fully observed cohorts) — *Q2: do users keep coming back?*
+- **Type:** SQL insight (`RETENTION_SQL`): % of each week's active users who sign in again 1–7 weeks later.
+- **Why SQL:** PostHog's native retention counts weeks after the data ends as **0%**. With frozen simulated data,
+  recent cohorts would look like they churned. The SQL version only shows cohorts whose 8 weeks are all observed
+  (Jul 19 – Aug 23). It matches the native view's numbers exactly; the native view is kept as a saved insight.
+
+*Native retention settings, for reference:*
 - **Type:** Retention
 - **Start event:** `user_signed_in`. **Return event:** `user_signed_in`. **Type: recurring** (any week a user
   signs in starts a cohort). First-time retention would mostly miss users whose first sign-in predates the range.
@@ -64,7 +74,7 @@ Data management → Annotations (or click a date on any chart). Scope: project.
 - **Type:** Trends, **Display:** bar (total value) or table
 - **Series (each as unique users):** `partner_scorecard_opened`, `report_exported`, `map_marker_clicked`,
   `chart_view_toggled`, `border_layer_toggled`, `alert_created`
-- **Date range override:** Sep 15 – Oct 14, 2026 (the last 30 days of data)
+- **Date range:** Sep 18 – Oct 17, 2026 (the last 30 days of data)
 - **Talking point:** low-adoption features are onboarding opportunities (or candidates to remove).
 
 ### 5. Exports: browser vs. server — *Q6: are we losing events?*
@@ -76,8 +86,8 @@ Data management → Annotations (or click a date on any chart). Scope: project.
 ### 6. Alerts beta engagement — *Q4: do accounts with the beta engage more?*
 - **Type:** Trends, interval week
 - **Series:** `user_signed_in`, aggregated as **Average per user** (wording may be "count per user → average")
-- **Breakdown:** `account_id`
-- **What to look for:** Meridian's sign-ins per user step up after the Sep 1 annotation.
+- **Breakdown:** `account_id`, with a filter `account_id` **is set** (otherwise the 0.3.0 bug's unlabeled events add a noisy `(none)` line)
+- **What to look for:** Meridian's sign-ins per user step up after the Sep 1 annotation (about 2.97 → 3.38 per week).
 - **Caveat to say out loud:** this isn't a randomized experiment (one account got the beta), so it's
   correlation, not proof. Too few users for a real A/B test.
 
@@ -119,7 +129,7 @@ ORDER BY active_users_30d DESC
 - **Talking point:** "I'd get this alert before the customer emails me." In Phase 7, this alert is what starts the investigation.
 
 ### 9. Data quality: sign-ins carrying `account_id` (%) — *the prevention metric*
-- **Type:** Trends, interval day. **Series A:** `user_signed_in` where `account_id` **is set**. **Series B:** `user_signed_in`.
+- **Type:** Trends, interval **week** (daily would divide by zero on weekends with no sign-ins). **Series A:** `user_signed_in` where `account_id` **is set**. **Series B:** `user_signed_in`.
 - **Formula:** `100 * A / B`. Should sit at 100%; it dips during 0.3.0. Put an alert on it: below 99%.
 
 ### 10. Stickiness (last 30 days)
@@ -138,11 +148,18 @@ ORDER BY active_users_30d DESC
 - **One deliberate change:** PostHog measures weekly active *people* and skips silent weeks, which the handbook notes
   flatters intermittent usage. For 3–5 seat accounts, unique users barely move (Lakeshore scored 8.5 that way), so
   engagement here is **sign-in frequency**, recent 21 days vs. the prior 63, with silent weeks counted as zero.
-- **Result (as of Oct 14):** Meridian 10.0 · Corvalia 9.2 (only gap: Alerts, an expansion conversation) · Lakeshore 5.0.
+- **Result (as of Oct 17):** Meridian 10.0 · Corvalia 9.2 (only gap: Alerts, an expansion conversation) · Lakeshore 5.4.
 
 ### Text card: About this dashboard
 A note at the top explaining that the data is simulated and which stories to look for, so anyone opening the public
 link understands it in seconds.
+
+## Technical audit
+
+`scripts/audit_dashboard.py` runs every chart's query and checks that the results are internally consistent:
+users never exceed seats, funnels never increase, percentages stay within 0–100, browser exports never exceed
+server exports, the last week isn't a partial-week artifact, the `(none)` series appears only in the bug weeks,
+stickiness buckets add up to active users, and so on. Currently 31/31 checks pass.
 
 ## Cohorts (People → Cohorts → New cohort)
 
