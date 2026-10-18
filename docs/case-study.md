@@ -34,11 +34,11 @@ re-ingesting data by using the person property instead.
 The first question in any "usage dropped" ticket: **did the behavior change, or did the measurement change?**
 
 ### 1. Reproduce the symptom
-Opened the customer's chart (dashboard chart 1: `user_signed_in`, unique users, breakdown `account_id`, weekly).
+Opened the customer's chart ("Active users per account, each week": `user_signed_in`, unique users, breakdown `account_id`, weekly).
 Corvalia drops in the week of Sep 28. **At the same time, a new `(none)` series appears.** Users didn't
 vanish; they lost their label.
 
-<!-- Screenshot: dashboard chart 1 with the Oct 1 annotation and the (none) series -->
+<!-- Screenshot: the active-users chart with the Oct 1 annotation and the (none) series -->
 
 ### 2. Line it up with releases
 The drop starts exactly at the **v0.3.0 · Login refactor** annotation (Oct 1).

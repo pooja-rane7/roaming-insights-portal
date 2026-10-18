@@ -79,11 +79,11 @@ HEALTH_SQL = """
 SELECT
     account,
     multiIf(account = 'meridian', 25, account = 'corvalia', 12, account = 'lakeshore', 5, 0) AS seats,
-    uniqIf(person_id, timestamp >= toDateTime('{AS_OF}') - INTERVAL 30 DAY) AS active_users_30d,
-    round(100 * active_users_30d / seats) AS seat_utilization_pct,
-    uniqIf(person_id, timestamp < toDateTime('{AS_OF}') - INTERVAL 30 DAY) AS active_users_prev_30d,
-    countIf(event = 'report_exported' AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 30 DAY) AS exports_30d,
-    max(timestamp) AS last_seen
+    uniqIf(person_id, timestamp >= toDateTime('{AS_OF}') - INTERVAL 30 DAY) AS active_last_30d,
+    round(100 * active_last_30d / seats) AS seat_utilization_pct,
+    uniqIf(person_id, timestamp < toDateTime('{AS_OF}') - INTERVAL 30 DAY) AS active_prior_30d,
+    countIf(event = 'report_exported' AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 30 DAY) AS exports_last_30d,
+    max(timestamp) AS last_active
 FROM (
     SELECT properties.account_id AS account, person_id, timestamp, event
     FROM events
@@ -92,7 +92,7 @@ FROM (
       AND properties.account_id IS NOT NULL
 )
 GROUP BY account
-ORDER BY active_users_30d DESC
+ORDER BY active_last_30d DESC
 """
 
 # Health score modeled on PostHog's own CS method (handbook: cs-and-onboarding/health-tracking):
@@ -120,10 +120,10 @@ breadth AS (
     GROUP BY account
 )
 SELECT a.account AS account,
-       round(a.recent_per_week, 1) AS recent_per_wk,
-       round(a.baseline_per_week, 1) AS baseline_per_wk,
-       round(least(1, (a.recent_per_week / a.baseline_per_week) / 0.85), 2) AS engagement,
-       b.features_used AS features_of_5,
+       round(a.recent_per_week, 1) AS sign_ins_per_week_now,
+       round(a.baseline_per_week, 1) AS sign_ins_per_week_usual,
+       round(least(1, (a.recent_per_week / a.baseline_per_week) / 0.85), 2) AS engagement_0_to_1,
+       b.features_used AS features_used_of_5,
        round(10 * (0.615 * least(1, (a.recent_per_week / a.baseline_per_week) / 0.85) + 0.385 * b.features_used / 5), 1) AS health_score
 FROM activity AS a
 LEFT JOIN breadth AS b ON a.account = b.account
@@ -203,59 +203,90 @@ ORDER BY period
 """,
 }
 
+N = {  # display names, referenced by LAYOUT and scripts/audit_dashboard.py
+    'wau': 'Active users per account, each week',
+    'wau_fixed': 'Active users per account, corrected for the tracking bug',
+    'score': 'Account health score (0–10)',
+    'seats': 'Seats, active users and exports per customer',
+    'lifecycle': 'Lakeshore Cellular: are users going dormant?',
+    'corvalia': 'Corvalia Wireless: weekly active users',
+    'funnel': 'Do new users reach value? First sign-in → open a partner → export',
+    'retention': 'Do users come back week after week?',
+    'stickiness': 'How many days a month do users sign in?',
+    'adoption': 'Which features do people use? (last 30 days)',
+    'beta': 'Did the Alerts beta increase engagement?',
+    'loss': 'Are we losing browser events? Exports, browser ÷ server',
+    'dq': 'Do events carry the customer account? (% of sign-ins)',
+}
+
 DASHBOARD_INSIGHTS = [
-    ("1. Weekly active users by account",
-     "Q3 · Unique users signing in per week, by account (event property). Watch for Corvalia's October dip and the (none) series.",
+    (N["wau"],
+     "How many people at each customer signed in each week. Corvalia's October dip and the pink 'None' line are a tracking bug in release 0.3.0, not churn: compare with the chart on the right.",
      trends([events_node("user_signed_in", "dau")], breakdown="account_id")),
-    ("1b. Weekly active users by account (bug-proof)",
-     "Chart 1 made robust: account = event property, falling back to the person property. Covers the 0.3.0 bug "
-     "(event property missing) and first sign-ins ingested before the person's properties were set.",
+    (N["wau_fixed"],
+     "Same as the left chart, but the account comes from the user's profile when an event is missing it. Corvalia stays flat, so there was no real drop.",
      trends([events_node("user_signed_in", "dau")], breakdown="coalesce(properties.account_id, person.properties.account_id)",
             breakdown_type="hogql")),
-    ("2. Activation funnel",
-     "Q1 · First-ever sign-in → open a partner → export, within 7 days.",
-     viz({"kind": "FunnelsQuery", "series": [events_node("user_signed_in", "first_time_for_user"), events_node("partner_scorecard_opened"), events_node("report_exported")],
-          "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
-          "funnelsFilter": {"funnelWindowInterval": 7, "funnelWindowIntervalUnit": "day", "funnelVizType": "steps", "layout": "horizontal"}})),
-    ("3. Weekly retention (fully observed cohorts)",
-     "Q2 · % of each week's active users who sign in again 1–7 weeks later. Only cohorts whose 8 weeks fall inside the data.",
-     sql(RETENTION_SQL)),
-    ("4. Feature adoption (last 30 days)",
-     "Q2 · Unique users per feature in the last 30 days.",
-     trends([events_node(e, "dau") for e in ["partner_scorecard_opened", "report_exported", "map_marker_clicked",
-                                              "chart_view_toggled", "border_layer_toggled", "alert_created"]],
-            interval="day", display="ActionsBarValue", date_range=LAST_30)),
-    ("5. Exports: browser vs. server",
-     "Q6 · report_exported (browser) as a % of report_generated (server). The gap is client-side event loss.",
-     trends([events_node("report_exported"), events_node("report_generated")], interval="week", formula="100 * A / B")),
-    ("6. Alerts beta engagement",
-     "Q4 · Average sign-ins per user per week: Meridian (Alerts beta from Sep 1) vs. Corvalia (no beta). Lakeshore is too small to compare. Correlation, not proof.",
-     trends([events_node("user_signed_in", "avg_count_per_actor")], breakdown="account_id",
-            properties=[{"key": "account_id", "value": ["meridian", "corvalia"], "operator": "exact", "type": "event"}])),
-    ("7. Account health",
-     "Q3 · As of Oct 17: seats, active users (30 days vs. the 30 before), utilization, exports and last activity per account.",
-     sql(HEALTH_SQL.replace("{AS_OF}", AS_OF))),
-    ("8. Corvalia weekly active users",
-     "Proactive CS · Unique Corvalia users per week. Attach an alert: notify when it drops more than 40%.",
-     trends([events_node("user_signed_in", "dau")],
-            properties=[{"key": "account_id", "value": ["corvalia"], "operator": "exact", "type": "event"}])),
-    ("12. Account health score (0–10)",
-     "Modeled on PostHog's CS health score (handbook): 0.615 × engagement (sign-in frequency vs. the account's own baseline) + 0.385 × feature breadth. As of Oct 17.",
+    (N["score"],
+     "One score per customer: 61.5% engagement (recent sign-ins vs. the account's own usual level) + 38.5% breadth (how many of 5 key features they use). Below about 6 means at risk. Method adapted from PostHog's CS handbook.",
      sql(HEALTH_SCORE_SQL.replace("{AS_OF}", AS_OF))),
-    ("9. Data quality: sign-ins carrying account_id (%)",
-     "Prevention · Weekly share of user_signed_in events with account_id set. Should be 100%; alert below 99%. Dipped on 0.3.0.",
-     trends([events_node("user_signed_in", "total", properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}]),
-             events_node("user_signed_in")], interval="week", formula="100 * A / B")),
-    ("10. Stickiness (last 30 days)",
-     "Engagement · Share of users by how many of the last 30 days they signed in. Habit beats headcount.",
-     viz({"kind": "StickinessQuery", "series": [events_node("user_signed_in")], "interval": "day", "dateRange": LAST_30,
-          "properties": [PROD], "filterTestAccounts": False})),
-    ("11. Lakeshore lifecycle",
-     "Churn risk · New, returning, resurrecting and dormant Lakeshore users per week.",
+    (N["seats"],
+     'Seat utilization = people active in the last 30 days ÷ seats bought. Low utilization before a renewal is a churn risk: Lakeshore uses 2 of 5 seats and exported nothing.',
+     sql(HEALTH_SQL.replace("{AS_OF}", AS_OF))),
+    (N["lifecycle"],
+     'Each week: new, returning and resurrecting users above zero; users who went quiet (dormant) below. More dormant than returning means the account is slipping. Lakeshore renews Nov 30.',
      viz({"kind": "LifecycleQuery", "series": [events_node("user_signed_in")], "interval": "week", "dateRange": PERIOD,
           "properties": [PROD, {"key": "account_id", "value": ["lakeshore"], "operator": "exact", "type": "event"}], "filterTestAccounts": False,
           "lifecycleFilter": {"showLegend": True}})),
+    (N["corvalia"],
+     'One account on its own, so an alert can watch it: notify when it drops more than 40% from the previous week.',
+     trends([events_node("user_signed_in", "dau")],
+            properties=[{"key": "account_id", "value": ["corvalia"], "operator": "exact", "type": "event"}])),
+    (N["funnel"],
+     'Of people signing in for the first time, how many open a partner scorecard and then export a report within 7 days.',
+     viz({"kind": "FunnelsQuery", "series": [events_node("user_signed_in", "first_time_for_user"), events_node("partner_scorecard_opened"), events_node("report_exported")],
+          "dateRange": PERIOD, "properties": [PROD], "filterTestAccounts": False,
+          "funnelsFilter": {"funnelWindowInterval": 7, "funnelWindowIntervalUnit": "day", "funnelVizType": "steps", "layout": "horizontal"}})),
+    (N["retention"],
+     'Rows: the week people were active. Columns: the % of them who signed in again 1–7 weeks later. Only weeks fully covered by the data are shown.',
+     sql(RETENTION_SQL)),
+    (N["stickiness"],
+     'Share of users by how many of the last 30 days they signed in. People with a habit churn less than occasional visitors.',
+     viz({"kind": "StickinessQuery", "series": [events_node("user_signed_in")], "interval": "day", "dateRange": LAST_30,
+          "properties": [PROD], "filterTestAccounts": False})),
+    (N["adoption"],
+     "Unique users per feature. Alerts is low because it's still a beta for Meridian only.",
+     trends([events_node(e, "dau") for e in ["partner_scorecard_opened", "report_exported", "map_marker_clicked",
+                                              "chart_view_toggled", "border_layer_toggled", "alert_created"]],
+            interval="day", display="ActionsBarValue", date_range=LAST_30)),
+    (N["beta"],
+     "Average sign-ins per user per week: Meridian (Alerts beta from Sep 1) vs. Corvalia (no beta). Meridian rises after Sep 1. That's a correlation, not proof: one account, too few users for an A/B test.",
+     trends([events_node("user_signed_in", "avg_count_per_actor")], breakdown="account_id",
+            properties=[{"key": "account_id", "value": ["meridian", "corvalia"], "operator": "exact", "type": "event"}])),
+    (N["loss"],
+     "Each export sends one event from the browser and one from the server, and the server one can't be blocked. About 97% means roughly 3% of browser events are lost.",
+     trends([events_node("report_exported"), events_node("report_generated")], interval="week", formula="100 * A / B")),
+    (N["dq"],
+     'Should always be 100%. It dipped in early October when release 0.3.0 stopped attaching the account for SSO sign-ins: the Corvalia bug. An alert below 99% would catch it on day one.',
+     trends([events_node("user_signed_in", "total", properties=[{"key": "account_id", "operator": "is_set", "type": "event", "value": "is_set"}]),
+             events_node("user_signed_in")], interval="week", formula="100 * A / B")),
 ]
+
+RENAMES = {  # names used by earlier versions of this script -> current names
+    '1. Weekly active users by account': N['wau'],
+    '1b. Weekly active users by account (bug-proof)': N['wau_fixed'],
+    '2. Activation funnel': N['funnel'],
+    '3. Weekly retention (fully observed cohorts)': N['retention'],
+    '4. Feature adoption (last 30 days)': N['adoption'],
+    '5. Exports: browser vs. server': N['loss'],
+    '6. Alerts beta engagement': N['beta'],
+    '7. Account health': N['seats'],
+    '8. Corvalia weekly active users': N['corvalia'],
+    '9. Data quality: sign-ins carrying account_id (%)': N['dq'],
+    '10. Stickiness (last 30 days)': N['stickiness'],
+    '11. Lakeshore lifecycle': N['lifecycle'],
+    '12. Account health score (0–10)': N['score'],
+}
 
 OBSOLETE_INSIGHTS = ["3. Weekly retention", "1b. Weekly active users by account (person property)"]
 
@@ -267,23 +298,22 @@ ANNOTATIONS = [
 
 
 SECTIONS = {
-    "health": "### 1 · Are our customer accounts healthy?",
-    "value": "### 2 · Do users get value, and keep coming back?",
-    "changes": "### 3 · Did our product changes work?",
-    "trust": "### 4 · Can we trust the data?",
+    "health": "### Are our customer accounts healthy?",
+    "value": "### Do users get value, and keep coming back?",
+    "changes": "### Did our product changes work?",
+    "trust": "### Can we trust the data?",
 }
-# Story order. Each row: (tile key, width) pairs on a 12-column grid; keys are insight-name prefixes,
-# "about" or a section key.
+# Story order. Each row: (tile key, width, height) on a 12-column grid; keys are N keys, "about" or a section key.
 LAYOUT = [
     [("about", 12, 2)],
-    [("health", 12, 1)], [("1. ", 6, 5), ("1b.", 6, 5)], [("12.", 6, 4), ("7. ", 6, 4)], [("11.", 6, 5), ("8. ", 6, 5)],
-    [("value", 12, 1)], [("2. ", 6, 5), ("3. ", 6, 5)], [("10.", 6, 5), ("4. ", 6, 5)],
-    [("changes", 12, 1)], [("6. ", 12, 5)],
-    [("trust", 12, 1)], [("5. ", 6, 5), ("9. ", 6, 5)],
+    [("health", 12, 1)], [("wau", 6, 5), ("wau_fixed", 6, 5)], [("score", 6, 4), ("seats", 6, 4)], [("lifecycle", 6, 5), ("corvalia", 6, 5)],
+    [("value", 12, 1)], [("funnel", 6, 5), ("retention", 6, 5)], [("stickiness", 6, 5), ("adoption", 6, 5)],
+    [("changes", 12, 1)], [("beta", 12, 5)],
+    [("trust", 12, 1)], [("loss", 6, 5), ("dq", 6, 5)],
 ]
 ABOUT_MARKER = "**About this dashboard**"
 ABOUT_TEXT = ABOUT_MARKER + """ · RoamLens is a fictional B2B roaming-insights portal; its three customer accounts and all usage are **simulated** (Jul 17 – Oct 17, 2026).
-Stories to look for: **Meridian** healthy (Alerts beta from Sep 1) · **Lakeshore** real churn risk (renews Nov 30) · **Corvalia** an apparent drop that was a tracking bug in v0.3.0 (compare chart 1 with 1b).
+Stories to look for: **Meridian** healthy (Alerts beta from Sep 1) · **Lakeshore** real churn risk (renews Nov 30) · **Corvalia** an apparent drop that was a tracking bug in v0.3.0 (compare the two charts at the top).
 Code, tracking plan and case study: the `roaming-insights-portal` repo."""
 
 
@@ -400,7 +430,8 @@ def main():
     for i, (name, desc, query) in enumerate(every):
         on_dashboard = i < len(DASHBOARD_INSIGHTS)
         body = {"name": name, "description": desc, "query": query, "saved": True}
-        current = find(insights, "name", name)
+        current = find(insights, "name", name) or next(
+            (find(insights, "name", old) for old, new in RENAMES.items() if new == name and find(insights, "name", old)), None)
         if on_dashboard:
             body["dashboards"] = sorted(set((current or {}).get("dashboards", [])) | {dash["id"]})
         if current:
@@ -434,7 +465,7 @@ def main():
         if key in bodies:
             head = bodies[key].split("\n")[0][:30]
             return next(t for t in live if (t.get("text") or {}).get("body", "").startswith(head))
-        return next(t for t in live if t.get("insight") and t["insight"]["name"].startswith(key))
+        return next(t for t in live if t.get("insight") and t["insight"]["name"] == N[key])
 
     updates, y = [], 0
     for row in LAYOUT:

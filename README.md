@@ -40,7 +40,7 @@ each with a story built into 90 days of simulated usage:
 - **A customer investigation end to end:** reproduce → localize with annotations, breakdowns and SQL → confirm with
   independent evidence (server-side events, person properties) → root cause in code → fix + regression test →
   a [plain-language reply](docs/case-study.md#reply-to-the-customer) with prevention steps and a proactive churn heads-up.
-- **Account health the way PostHog's CS team does it:** chart 12 adapts the health model from
+- **Account health the way PostHog's CS team does it:** the health-score chart adapts the model from
   [PostHog's handbook](https://posthog.com/handbook/cs-and-onboarding/health-tracking), and explains where it had to change.
 - **Cost and data hygiene:** free plan, no card, test traffic tagged and filtered, a pilot before any bulk send,
   rate-limit and alert recommendations.
