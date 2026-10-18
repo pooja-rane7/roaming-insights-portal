@@ -9,7 +9,7 @@ invented for this project; any resemblance to real companies is coincidental.
 
 | | |
 |---|---|
-| **Live portal** | _link added after deployment_ |
+| **Live portal** | [roaming-insights-portal.vercel.app](https://roaming-insights-portal.vercel.app): pick any demo account and role |
 | **Public PostHog dashboard** | [RoamLens · Customer health](https://us.posthog.com/shared/rKCshQtAb0WFpPF6O1YX_kG5SUu5JQ) |
 | **Case study** | [Did Corvalia just churn?](docs/case-study.md): "usage dropped ~70%" turned out to be a tracking bug |
 | **Tracking plan** | [Business questions → events → properties](docs/tracking-plan.md) |
