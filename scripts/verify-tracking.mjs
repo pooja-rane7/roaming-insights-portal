@@ -100,12 +100,14 @@ try {
   await send("Emulation.setUserAgentOverride", { userAgent: userAgent.replace("HeadlessChrome", "Chrome") });
 
   // Tag this browser as QA traffic before the app loads, so these events never count as real usage.
+  // Set the flag on a same-origin URL that doesn't load the app (the API returns plain text),
+  // so not even the first pageview is counted as real.
   let load = nextLoad();
-  await send("Page.navigate", { url: `${BASE}/` });
+  await send("Page.navigate", { url: `${BASE}/api/export` });
   await load;
   await run(`localStorage.setItem("roamlens_traffic", "test")`);
   load = nextLoad();
-  await send("Page.reload");
+  await send("Page.navigate", { url: `${BASE}/` });
   await load; await sleep(1500);
   console.log("✓ open sign-in page (tagged as test traffic)");
 
