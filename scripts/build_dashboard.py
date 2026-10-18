@@ -90,7 +90,7 @@ FROM (
     SELECT properties.account_id AS account, person_id, timestamp, event
     FROM events
     WHERE properties.environment = 'production' AND coalesce(properties.traffic_source_type, '') != 'test'
-      AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 60 DAY
+      AND timestamp >= toDateTime('{AS_OF}') - INTERVAL 60 DAY AND timestamp < toDateTime('{AS_OF}')
       AND properties.account_id IS NOT NULL
 )
 GROUP BY account
@@ -462,6 +462,12 @@ def main():
         api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", {"tiles": new_texts})
         print(f"  + {len(new_texts)} text card(s)")
         live = [t for t in api("GET", f"/api/projects/{pid}/dashboards/{dash['id']}/").get("tiles", []) if not t.get("deleted")]
+    heads = [body.split("\n")[0][:30] for body in bodies.values()]
+    stale = [t for t in live if t.get("text") and not any(t["text"].get("body", "").startswith(h) for h in heads)]
+    if stale:   # text cards from earlier wording (e.g. numbered section headings)
+        api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", {"tiles": [{"id": t["id"], "deleted": True} for t in stale]})
+        print(f"  - {len(stale)} outdated text card(s)")
+        live = [t for t in live if t not in stale]
 
     def tile_for(key):
         if key in bodies:
