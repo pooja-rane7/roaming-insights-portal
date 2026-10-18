@@ -130,6 +130,20 @@ ORDER BY active_users_30d DESC
 - **Type:** Lifecycle, series `user_signed_in`, filter `account_id` = `lakeshore`, weekly.
 - **What to look for:** dormant bars growing; no new or resurrecting users. That's why Lakeshore is a real risk.
 
+### 12. Account health score (0–10) — *modeled on PostHog's own CS method*
+- **Type:** SQL insight (see `HEALTH_SCORE_SQL` in `scripts/build_dashboard.py`).
+- **Method:** PostHog's handbook ([customer health tracking](https://posthog.com/handbook/cs-and-onboarding/health-tracking))
+  blends `0.615 × engagement + 0.385 × stickiness`, with engagement at full marks from 85% of the account's own baseline.
+  Here, *breadth* = how many of 5 key features the account used in the last 30 days.
+- **One deliberate change:** PostHog measures weekly active *people* and skips silent weeks, which the handbook notes
+  flatters intermittent usage. For 3–5 seat accounts, unique users barely move (Lakeshore scored 8.5 that way), so
+  engagement here is **sign-in frequency**, recent 21 days vs. the prior 63, with silent weeks counted as zero.
+- **Result (as of Oct 14):** Meridian 10.0 · Corvalia 9.2 (only gap: Alerts, an expansion conversation) · Lakeshore 5.0.
+
+### Text card: About this dashboard
+A note at the top explaining that the data is simulated and which stories to look for, so anyone opening the public
+link understands it in seconds.
+
 ## Cohorts (People → Cohorts → New cohort)
 
 | Cohort | Definition | Use |
