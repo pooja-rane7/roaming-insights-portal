@@ -334,7 +334,7 @@ def main():
     dashboards = list_all(f"/api/projects/{pid}/dashboards/?limit=200")
     dash = find(dashboards, "name", DASHBOARD)
     dash_body = {"name": DASHBOARD, "description": "Account health, activation, retention and data quality for RoamLens (fictional, simulated data). Built from docs/dashboard-spec.md.",
-                 "filters": {**PERIOD, "properties": [PROD]}}
+                 "filters": {**PERIOD, "properties": [PROD]}, "pinned": True}
     if dash:
         api("PATCH", f"/api/projects/{pid}/dashboards/{dash['id']}/", dash_body)
         print(f"  = {DASHBOARD} (id {dash['id']})")
