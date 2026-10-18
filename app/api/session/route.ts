@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   }
   const res = NextResponse.redirect(new URL("/overview", req.url), 303);
   res.cookies.set(SESSION_COOKIE, encodeSession({ userId: newUserId(accountId, role), accountId, role }), {
-    httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30,
+    httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30, secure: process.env.NODE_ENV === "production",
   });
   return res;
 }

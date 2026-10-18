@@ -4,10 +4,10 @@ import type * as Leaflet from "leaflet";
 import { useEffect, useRef, useState } from "react";
 import type { MapPoint } from "@/lib/data";
 
-const TILES = {
-  light: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-  dark: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-};
+// OpenStreetMap's standard tiles (usage policy: attribution, light traffic). They're tinted gray in
+// CSS (.map .leaflet-tile-pane in globals.css), so one tile set works for both themes.
+const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 interface Props {
   points: MapPoint[];
@@ -26,14 +26,13 @@ export function RoamingMap({ points, zones, showZones, fitKey, pointTooltip, zon
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
   const L = useRef<typeof Leaflet | null>(null);
-  const layers = useRef<{ bubbles?: Leaflet.LayerGroup; zones?: Leaflet.LayerGroup; tiles?: Leaflet.TileLayer }>({});
+  const layers = useRef<{ bubbles?: Leaflet.LayerGroup; zones?: Leaflet.LayerGroup }>({});
   const lastFit = useRef("");
   const [ready, setReady] = useState(false);
 
   // Create the map once, in the browser only (Leaflet needs `window`).
   useEffect(() => {
     let cancelled = false;
-    let observer: MutationObserver | undefined;
     import("leaflet").then((mod) => {
       if (cancelled || !el.current) return;
       L.current = mod.default ?? mod;
@@ -41,19 +40,11 @@ export function RoamingMap({ points, zones, showZones, fitKey, pointTooltip, zon
       map.current = m;
       layers.current.bubbles = L.current.layerGroup().addTo(m);
       layers.current.zones = L.current.layerGroup().addTo(m);
-      const setTiles = () => {
-        const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-        layers.current.tiles?.remove();
-        layers.current.tiles = L.current!.tileLayer(TILES[theme], { attribution: "Tiles &copy; Esri", maxZoom: 10 }).addTo(m);
-      };
-      setTiles();
-      observer = new MutationObserver(setTiles);
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+      L.current.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 10 }).addTo(m);
       setReady(true);
     });
     return () => {
       cancelled = true;
-      observer?.disconnect();
       map.current?.remove();
       map.current = null;
     };

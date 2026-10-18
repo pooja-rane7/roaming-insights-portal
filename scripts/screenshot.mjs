@@ -2,7 +2,7 @@
 // Signs in with a demo session cookie so portal pages render.
 //
 //   node scripts/screenshot.mjs <url> <out.png> [--theme light|dark] [--width 1440] [--account meridian] [--role analyst]
-//                                [--no-session] [--wait 3000]   (--no-session: for third-party pages, e.g. a shared PostHog dashboard)
+//                                [--no-session] [--wait 3000] [--viewport]   (--no-session: for third-party pages, e.g. a shared PostHog dashboard)
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -61,9 +61,11 @@ try {
   await send("Page.navigate", { url });
   await loaded;
   await sleep(waitMs); // map tiles, client components, remote charts
-  const { cssContentSize } = await send("Page.getLayoutMetrics");
-  await send("Emulation.setDeviceMetricsOverride", { width, height: Math.ceil(cssContentSize.height), deviceScaleFactor: 1, mobile: false });
-  await sleep(800);
+  if (!rest.includes("--viewport")) {   // default: full page; --viewport keeps the 900px-tall window
+    const { cssContentSize } = await send("Page.getLayoutMetrics");
+    await send("Emulation.setDeviceMetricsOverride", { width, height: Math.ceil(cssContentSize.height), deviceScaleFactor: 1, mobile: false });
+    await sleep(800);
+  }
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   writeFileSync(out, Buffer.from(data, "base64"));
   console.log(`saved ${out}`);
